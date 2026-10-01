@@ -70,7 +70,7 @@ const NAV: {
         title: "Playground",
         href: "/playground",
         icon: FlaskConicalIcon,
-        access: "admin",
+        access: "member",
       },
     ],
   },

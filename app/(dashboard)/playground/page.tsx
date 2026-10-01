@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { FlaskConicalIcon } from "lucide-react"
+import { BoxesIcon } from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { PageHeader } from "@/components/page-header"
@@ -12,15 +12,13 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { requireAdmin } from "@/lib/auth"
-import type { ModelRow, ProviderRow, RouteRow } from "@/lib/db/types"
+import { requireMember } from "@/lib/auth"
+import type { AppRow } from "@/lib/db/types"
+import { loadAppContext } from "@/lib/gateway/auth"
+import { playgroundOptions } from "@/lib/gateway/playground"
 import { createClient } from "@/lib/supabase/server"
 
-import {
-  PlaygroundClient,
-  type ModelGroupOption,
-  type RouteOption,
-} from "./playground-client"
+import { PlaygroundClient, type AppOption } from "./playground-client"
 
 export const metadata: Metadata = { title: "Playground" }
 
@@ -28,79 +26,77 @@ export const metadata: Metadata = { title: "Playground" }
 // allows up to 300s; ignored when self-hosted.
 export const maxDuration = 300
 
-async function loadOptions() {
-  const supabase = await createClient()
-  const [routesResult, modelsResult, providersResult] = await Promise.all([
-    supabase
-      .from("routes")
-      .select("name, description, strategy")
-      .eq("kind", "chat")
-      .eq("enabled", true)
-      .order("name"),
-    supabase
-      .from("models")
-      .select("slug, display_name, provider_id")
-      .eq("kind", "chat")
-      .eq("enabled", true)
-      .order("slug"),
-    supabase.from("providers").select("id, name, enabled").order("name"),
-  ])
-
-  const routes: RouteOption[] = (
-    (routesResult.data ?? []) as Pick<
-      RouteRow,
-      "name" | "description" | "strategy"
-    >[]
-  ).map((route) => ({
-    name: route.name,
-    description: route.description,
-    strategy: route.strategy,
-  }))
-
-  const providers = (providersResult.data ?? []) as Pick<
-    ProviderRow,
-    "id" | "name" | "enabled"
-  >[]
-  const models = (modelsResult.data ?? []) as Pick<
-    ModelRow,
-    "slug" | "display_name" | "provider_id"
-  >[]
-  // Models of disabled providers can't be served, so leave them out.
-  const modelGroups: ModelGroupOption[] = providers
-    .filter((provider) => provider.enabled)
-    .map((provider) => ({
-      provider: provider.name,
-      models: models
-        .filter((model) => model.provider_id === provider.id)
-        .map((model) => ({
-          slug: model.slug,
-          displayName: model.display_name,
-        })),
-    }))
-    .filter((group) => group.models.length > 0)
-
-  return { routes, modelGroups }
-}
-
 export default async function PlaygroundPage({
   searchParams,
 }: {
-  searchParams: Promise<{ model?: string | string[] }>
+  searchParams: Promise<{ model?: string | string[]; app?: string | string[] }>
 }) {
-  await requireAdmin()
-  const [{ model: requested }, { routes, modelGroups }] = await Promise.all([
-    searchParams,
-    loadOptions(),
-  ])
+  const me = await requireMember()
+  const { model: requestedModel, app: requestedApp } = await searchParams
 
-  const options = [
-    ...routes.map((route) => route.name),
-    ...modelGroups.flatMap((group) => group.models.map((model) => model.slug)),
+  // RLS: admins see every app, members only their own.
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("apps")
+    .select("id, name, owner_email, enabled")
+    .order("name")
+  const apps: AppOption[] = (
+    (data ?? []) as Pick<AppRow, "id" | "name" | "owner_email" | "enabled">[]
+  ).map((app) => ({
+    id: app.id,
+    name: app.name,
+    owner: app.owner_email === me.email ? null : app.owner_email,
+    enabled: app.enabled,
+  }))
+
+  if (!me.isAdmin && apps.length === 0) {
+    return (
+      <>
+        <PageHeader
+          title="Playground"
+          description="Try your routes and models before wiring them into code."
+        />
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <BoxesIcon />
+            </EmptyMedia>
+            <EmptyTitle>Create an app first</EmptyTitle>
+            <EmptyDescription>
+              Playground requests run as one of your apps, with its limits and
+              usage tracking.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button asChild>
+              <Link href="/apps">Go to apps</Link>
+            </Button>
+          </EmptyContent>
+        </Empty>
+      </>
+    )
+  }
+
+  // Admins default to "no app" (unrestricted); members to their first app.
+  const initialAppId =
+    typeof requestedApp === "string" &&
+    apps.some((app) => app.id === requestedApp)
+      ? requestedApp
+      : me.isAdmin
+        ? null
+        : apps[0].id
+  const context = initialAppId ? await loadAppContext(initialAppId) : null
+  const options = await playgroundOptions(context)
+  const names = [
+    ...options.routes.map((route) => route.name),
+    ...options.modelGroups.flatMap((group) =>
+      group.models.map((model) => model.slug)
+    ),
   ]
   const initialModel =
-    typeof requested === "string" && options.includes(requested)
-      ? requested
-      : (options[0] ?? "")
+    typeof requestedModel === "string" && names.includes(requestedModel)
+      ? requestedModel
+      : (names[0] ?? "")
 
   return (
     <>
@@ -108,34 +104,13 @@ export default async function PlaygroundPage({
         title="Playground"
         description="Send test requests through the real gateway pipeline: routing, fallbacks, cooldowns, cost tracking and logging."
       />
-      {options.length === 0 ? (
-        <Empty className="border">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <FlaskConicalIcon />
-            </EmptyMedia>
-            <EmptyTitle>Nothing to test yet</EmptyTitle>
-            <EmptyDescription>
-              Enable a chat model, or create a chat route, and it will show up
-              here.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent className="flex-row justify-center">
-            <Button variant="outline" asChild>
-              <Link href="/models">Models</Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/routes">Routes</Link>
-            </Button>
-          </EmptyContent>
-        </Empty>
-      ) : (
-        <PlaygroundClient
-          routes={routes}
-          modelGroups={modelGroups}
-          initialModel={initialModel}
-        />
-      )}
+      <PlaygroundClient
+        apps={apps}
+        canRunWithoutApp={me.isAdmin}
+        initialAppId={initialAppId}
+        initialOptions={options}
+        initialModel={initialModel}
+      />
     </>
   )
 }

@@ -65,15 +65,45 @@ export function extractApiKey(request: Request): string | undefined {
   )
 }
 
+const OWNER_COLUMNS =
+  "members(email, role, model_access, allowed_models, monthly_budget_usd)"
+
+function toKeyOwner(owner: OwnerFields): KeyOwner {
+  return {
+    email: owner.email,
+    policy: accessPolicy(owner),
+    monthlyBudgetUsd:
+      owner.role === "member" && owner.monthly_budget_usd != null
+        ? Number(owner.monthly_budget_usd)
+        : null,
+  }
+}
+
+/**
+ * An app with its owner's limits, as if called with one of its keys. Used by
+ * the dashboard playground's "run as app".
+ */
+export async function loadAppContext(
+  appId: string
+): Promise<AuthContext | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("apps")
+    .select(`*, ${OWNER_COLUMNS}`)
+    .eq("id", appId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  const row = data as (AppRow & { members: OwnerFields | null }) | null
+  if (!row?.members) return null
+  return { keyId: "", app: row, owner: toKeyOwner(row.members) }
+}
+
 async function lookupKey(hash: string): Promise<CachedKey | null> {
   const cached = keyCache.get(hash)
   if (cached && Date.now() - cached.at < KEY_CACHE_TTL_MS) return cached.value
 
   const { data, error } = await supabaseAdmin()
     .from("api_keys")
-    .select(
-      "id, revoked_at, expires_at, apps(*, members(email, role, model_access, allowed_models, monthly_budget_usd))"
-    )
+    .select(`id, revoked_at, expires_at, apps(*, ${OWNER_COLUMNS})`)
     .eq("key_hash", hash)
     .maybeSingle()
   if (error) {
@@ -97,14 +127,7 @@ async function lookupKey(hash: string): Promise<CachedKey | null> {
       ? {
           keyId: row.id,
           app: row.apps,
-          owner: {
-            email: owner.email,
-            policy: accessPolicy(owner),
-            monthlyBudgetUsd:
-              owner.role === "member" && owner.monthly_budget_usd != null
-                ? Number(owner.monthly_budget_usd)
-                : null,
-          },
+          owner: toKeyOwner(owner),
           revokedAt: row.revoked_at,
           expiresAt: row.expires_at,
         }

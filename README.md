@@ -149,6 +149,12 @@ For each member you set:
 
 The gateway enforces both on every API call, and `/v1/models` lists only what their key can use. Removing a member deletes their apps and keys immediately.
 
+The **Playground** has a **Run as** picker. Running as an app behaves exactly like a call with that app's key:
+- the app's allowed models, rate limit and budget apply, along with its owner's;
+- usage is logged under that app.
+
+Members can only run as their own apps. Admins can also pick **No app** for unrestricted tests.
+
 ## Security model
 
 - **Dashboard access:** email and password, with public sign-ups disabled, plus the `public.admins` allowlist, enforced in three places:

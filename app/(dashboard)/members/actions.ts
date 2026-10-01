@@ -68,13 +68,11 @@ export async function addMember(
   if (problem) return { ok: false, error: problem }
 
   const db = supabaseAdmin()
-  const { error } = await db
-    .from("members")
-    .insert({
-      email: parsedEmail.data,
-      added_by: me.email,
-      ...parsedAccess.data,
-    })
+  const { error } = await db.from("members").insert({
+    email: parsedEmail.data,
+    added_by: me.email,
+    ...parsedAccess.data,
+  })
   if (error) {
     return error.code === "23505"
       ? { ok: false, error: "That email already has access" }

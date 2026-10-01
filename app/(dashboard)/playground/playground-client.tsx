@@ -64,25 +64,34 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
-import type { AttemptLogEntry, RouteStrategy } from "@/lib/db/types"
+import type { AttemptLogEntry } from "@/lib/db/types"
 import { formatMs, formatNumber, formatUsd } from "@/lib/format"
 import type {
   PlaygroundMessage,
+  PlaygroundOptions,
   PlaygroundResult,
 } from "@/lib/gateway/playground"
 import { cn } from "@/lib/utils"
 
-import { sendPlaygroundMessage } from "./actions"
+import { getPlaygroundOptions, sendPlaygroundMessage } from "./actions"
 
-export interface RouteOption {
+export interface AppOption {
+  id: string
   name: string
-  description: string | null
-  strategy: RouteStrategy
+  /** Owner's email when it isn't the viewer's own app. */
+  owner: string | null
+  enabled: boolean
 }
 
-export interface ModelGroupOption {
-  provider: string
-  models: { slug: string; displayName: string | null }[]
+const NO_APP = "__none"
+
+function optionNames(options: PlaygroundOptions): string[] {
+  return [
+    ...options.routes.map((route) => route.name),
+    ...options.modelGroups.flatMap((group) =>
+      group.models.map((model) => model.slug)
+    ),
+  ]
 }
 
 type Entry =
@@ -135,15 +144,24 @@ function useIsMac() {
 }
 
 export function PlaygroundClient({
-  routes,
-  modelGroups,
+  apps,
+  canRunWithoutApp,
+  initialAppId,
+  initialOptions,
   initialModel,
 }: {
-  routes: RouteOption[]
-  modelGroups: ModelGroupOption[]
+  apps: AppOption[]
+  canRunWithoutApp: boolean
+  initialAppId: string | null
+  initialOptions: PlaygroundOptions
   initialModel: string
 }) {
+  const [appId, setAppId] = useState<string | null>(initialAppId)
+  const [options, setOptions] = useState(initialOptions)
+  const [loadingOptions, startLoadingOptions] = useTransition()
   const [model, setModel] = useState(initialModel)
+  const { routes, modelGroups } = options
+  const selectedApp = apps.find((app) => app.id === appId)
   const [system, setSystem] = useState("")
   const [temperature, setTemperature] = useState("")
   const [maxTokens, setMaxTokens] = useState("")
@@ -159,6 +177,23 @@ export function PlaygroundClient({
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
   }, [entries.length, pending])
+
+  function changeApp(value: string) {
+    const next = value === NO_APP ? null : value
+    setAppId(next)
+    startLoadingOptions(async () => {
+      const result = await getPlaygroundOptions(next)
+      if (!result.ok || !result.data) {
+        toast.error(result.ok ? "Couldn't load models" : result.error)
+        return
+      }
+      const names = optionNames(result.data)
+      setOptions(result.data)
+      setModel((current) =>
+        names.includes(current) ? current : (names[0] ?? "")
+      )
+    })
+  }
 
   function newId() {
     nextId.current += 1
@@ -195,6 +230,7 @@ export function PlaygroundClient({
         const response = await sendPlaygroundMessage({
           model: requestedModel,
           messages,
+          appId,
           ...settings,
         })
         if (!response.ok) {
@@ -283,46 +319,100 @@ export function PlaygroundClient({
         <CardContent>
           <FieldGroup className="gap-5">
             <Field>
-              <FieldLabel htmlFor="playground-model">Route or model</FieldLabel>
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger
-                  id="playground-model"
-                  className="w-full min-w-0 font-mono"
-                >
-                  <SelectValue placeholder="Pick a route or model" />
+              <FieldLabel htmlFor="playground-app">Run as</FieldLabel>
+              <Select
+                value={appId ?? NO_APP}
+                onValueChange={changeApp}
+                disabled={pending}
+              >
+                <SelectTrigger id="playground-app" className="w-full min-w-0">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent position="popper" className="max-h-80">
-                  {routes.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Routes</SelectLabel>
-                      {routes.map((route) => (
-                        <SelectItem
-                          key={route.name}
-                          value={route.name}
-                          className="font-mono"
-                        >
-                          {route.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
+                  {canRunWithoutApp && (
+                    <SelectItem value={NO_APP}>
+                      No app (unrestricted)
+                    </SelectItem>
                   )}
-                  {modelGroups.map((group, index) => (
-                    <SelectGroup key={group.provider}>
-                      {(index > 0 || routes.length > 0) && <SelectSeparator />}
-                      <SelectLabel>{group.provider}</SelectLabel>
-                      {group.models.map((option) => (
-                        <SelectItem
-                          key={option.slug}
-                          value={option.slug}
-                          className="font-mono"
-                        >
-                          {option.slug}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
+                  {apps.map((app) => (
+                    <SelectItem key={app.id} value={app.id}>
+                      {app.name}
+                      {app.owner && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {app.owner}
+                        </span>
+                      )}
+                      {!app.enabled && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          (disabled)
+                        </span>
+                      )}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <FieldDescription>
+                {selectedApp
+                  ? "Exactly like a call with this app's key: its allowed models, rate limit and budget apply (and its owner's), and usage is logged under it."
+                  : "Unrestricted test as you; usage is logged without an app."}
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="playground-model">
+                Route or model
+                {loadingOptions && <Spinner className="size-3" />}
+              </FieldLabel>
+              {routes.length === 0 && modelGroups.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {selectedApp
+                    ? "This app can't call any enabled chat route or model."
+                    : "Enable a chat model or create a chat route first."}
+                </p>
+              ) : (
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger
+                    id="playground-model"
+                    className="w-full min-w-0 font-mono"
+                  >
+                    <SelectValue placeholder="Pick a route or model" />
+                  </SelectTrigger>
+                  <SelectContent position="popper" className="max-h-80">
+                    {routes.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel>Routes</SelectLabel>
+                        {routes.map((route) => (
+                          <SelectItem
+                            key={route.name}
+                            value={route.name}
+                            className="font-mono"
+                          >
+                            {route.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
+                    {modelGroups.map((group, index) => (
+                      <SelectGroup key={group.provider}>
+                        {(index > 0 || routes.length > 0) && (
+                          <SelectSeparator />
+                        )}
+                        <SelectLabel>{group.provider}</SelectLabel>
+                        {group.models.map((option) => (
+                          <SelectItem
+                            key={option.slug}
+                            value={option.slug}
+                            className="font-mono"
+                          >
+                            {option.slug}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <FieldDescription>
                 {selectedRoute
                   ? `${selectedRoute.description ? `${selectedRoute.description}. ` : ""}Route with ${

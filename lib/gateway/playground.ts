@@ -1,11 +1,14 @@
 import "server-only"
 
-import type { AttemptLogEntry } from "@/lib/db/types"
+import type { AttemptLogEntry, RouteStrategy } from "@/lib/db/types"
 import { priceTier } from "@/lib/pricing"
 
+import { enforceLimits, loadAppContext, type AuthContext } from "./auth"
+import { getSnapshot } from "./config"
 import { ClientAbortError, GatewayError } from "./errors"
 import { executeChat, finishJson } from "./execute"
 import { RequestRecorder } from "./recorder"
+import { listAvailableModels } from "./router"
 import type { ChatRequest } from "./types"
 
 export interface PlaygroundMessage {
@@ -19,8 +22,65 @@ export interface PlaygroundRequest {
   messages: PlaygroundMessage[]
   temperature?: number
   maxTokens?: number
-  /** The admin running it; their usage is attributed to them. */
+  /**
+   * Run as this app: its allowed models, rate limit and budget apply, plus
+   * its owner's model access and budget, and usage is logged under it.
+   */
+  appId?: string | null
+  /** Without an app: the admin running it; usage is attributed to them. */
   ownerEmail?: string
+}
+
+export interface PlaygroundOptions {
+  routes: {
+    name: string
+    description: string | null
+    strategy: RouteStrategy
+  }[]
+  modelGroups: {
+    provider: string
+    models: { slug: string; displayName: string | null }[]
+  }[]
+}
+
+/** Chat routes and models the app (or, with no app, an admin) can call. */
+export async function playgroundOptions(
+  context: AuthContext | null
+): Promise<PlaygroundOptions> {
+  const snapshot = await getSnapshot()
+  const available = listAvailableModels(
+    snapshot,
+    context?.app ?? null,
+    context?.owner.policy
+  ).filter((entry) => entry.kind === "chat")
+
+  const routes: PlaygroundOptions["routes"] = []
+  const groups = new Map<string, PlaygroundOptions["modelGroups"][number]>()
+  for (const entry of available) {
+    const route = snapshot.routes.get(entry.id)
+    if (route) {
+      routes.push({
+        name: route.name,
+        description: route.description,
+        strategy: route.strategy,
+      })
+      continue
+    }
+    const model = snapshot.modelsBySlug.get(entry.id)
+    if (!model) continue
+    const group = groups.get(model.provider.id) ?? {
+      provider: model.provider.name,
+      models: [],
+    }
+    group.models.push({ slug: model.slug, displayName: model.display_name })
+    groups.set(model.provider.id, group)
+  }
+  return {
+    routes,
+    modelGroups: [...groups.values()].sort((a, b) =>
+      a.provider.localeCompare(b.provider)
+    ),
+  }
 }
 
 export interface PlaygroundResult {
@@ -44,11 +104,23 @@ export async function runPlayground(
   input: PlaygroundRequest
 ): Promise<PlaygroundResult> {
   const recorder = new RequestRecorder("playground")
+  let context: AuthContext | null = null
+  if (input.appId) {
+    context = await loadAppContext(input.appId)
+    if (!context) {
+      return {
+        ok: false,
+        error: "That app no longer exists",
+        attempts: [],
+        latencyMs: 0,
+      }
+    }
+  }
   recorder.enableLogging({
-    appId: null,
+    appId: context?.app.id ?? null,
     apiKeyId: null,
-    ownerEmail: input.ownerEmail ?? null,
-    logPayloads: false,
+    ownerEmail: context?.owner.email ?? input.ownerEmail ?? null,
+    logPayloads: context?.app.log_payloads ?? false,
   })
 
   const request: ChatRequest = {
@@ -62,9 +134,21 @@ export async function runPlayground(
   }
 
   try {
+    if (context) {
+      if (!context.app.enabled) {
+        throw new GatewayError(
+          403,
+          `App '${context.app.name}' is disabled.`,
+          "app_disabled",
+          "permission_error"
+        )
+      }
+      await enforceLimits(context)
+    }
     const execution = await executeChat({
       request,
-      app: null,
+      app: context?.app ?? null,
+      policy: context?.owner.policy,
       signal: AbortSignal.timeout(300_000),
       recorder,
     })
