@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 
+import { describeNames, ENV_NAMES, readEnv } from "@/lib/env-names"
+
 // Refreshes the Supabase session cookie and sends signed-out visitors to
 // /login. This is only an optimistic check: the dashboard layout and every
 // server action verify admin access again (see lib/auth.ts).
@@ -13,18 +15,16 @@ const PUBLIC_PATHS = ["/login", "/auth/"]
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
-  const supabaseUrl =
-    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey =
-    process.env.SUPABASE_PUBLISHABLE_KEY ??
-    process.env.SUPABASE_ANON_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseUrl = readEnv(ENV_NAMES.supabaseUrl)
+  const supabaseKey = readEnv(ENV_NAMES.supabasePublishableKey)
   if (!supabaseUrl || !supabaseKey) {
+    const missing = [
+      !supabaseUrl && describeNames(ENV_NAMES.supabaseUrl),
+      !supabaseKey && describeNames(ENV_NAMES.supabasePublishableKey),
+    ].filter(Boolean)
     return new NextResponse(
-      "Gateway is not configured: missing Supabase environment variables.",
-      {
-        status: 500,
-      }
+      `Gateway is not configured: missing ${missing.join(" and ")}. Set it in your environment and redeploy.`,
+      { status: 500 }
     )
   }
 

@@ -1,30 +1,23 @@
 import "server-only"
 
-// All configuration is read at runtime (never NEXT_PUBLIC_*), so one Docker
-// image or Vercel build works in any environment.
+import { describeNames, ENV_NAMES, readEnv } from "@/lib/env-names"
 
-function required(name: string, ...fallbacks: string[]): string {
-  for (const key of [name, ...fallbacks]) {
-    const value = process.env[key]
-    if (value) return value
-  }
+function required(names: readonly string[]): string {
+  const value = readEnv(names)
+  if (value) return value
   throw new Error(
-    `Missing environment variable ${name}. See .env.example for the full list.`
+    `Missing environment variable ${describeNames(names)}. See .env.example for the full list.`
   )
 }
 
 export const env = {
-  supabaseUrl: () => required("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"),
-  supabasePublishableKey: () =>
-    required(
-      "SUPABASE_PUBLISHABLE_KEY",
-      "SUPABASE_ANON_KEY",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY"
-    ),
-  supabaseSecretKey: () =>
-    required("SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"),
-  encryptionKey: () => required("GATEWAY_ENCRYPTION_KEY"),
+  supabaseUrl: () => required(ENV_NAMES.supabaseUrl),
+  supabasePublishableKey: () => required(ENV_NAMES.supabasePublishableKey),
+  supabaseSecretKey: () => required(ENV_NAMES.supabaseSecretKey),
+  encryptionKey: () => required(ENV_NAMES.encryptionKey),
   superadminEmail: () =>
-    (process.env.SUPERADMIN_EMAIL ?? "kalyanb2000@gmail.com").toLowerCase(),
-  appUrl: () => process.env.APP_URL?.replace(/\/+$/, "") || undefined,
+    (process.env.SUPERADMIN_EMAIL ?? "kalyanb2000@gmail.com")
+      .trim()
+      .toLowerCase(),
+  appUrl: () => process.env.APP_URL?.trim().replace(/\/+$/, "") || undefined,
 }
