@@ -1,0 +1,212 @@
+// Row shapes for the tables in supabase/migrations. Hand-written so the app
+// builds without a linked Supabase project; keep in sync with the SQL.
+
+import type { Capability, ProviderType } from "@/lib/providers/catalog"
+
+export type MemberRole = "superadmin" | "admin" | "member"
+
+/** all = any model; free = only models known to cost $0; allowlist = allowed_models */
+export type ModelAccess = "all" | "free" | "allowlist"
+
+export interface MemberRow {
+  email: string
+  role: MemberRole
+  model_access: ModelAccess
+  /** Route names or model slugs, used when model_access = allowlist. */
+  allowed_models: string[]
+  /** Across all of the member's apps; null = no cap. */
+  monthly_budget_usd: number | null
+  added_by: string | null
+  created_at: string
+}
+
+export interface AppRow {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  enabled: boolean
+  allowed_models: string[]
+  default_model: string | null
+  monthly_budget_usd: number | null
+  rpm_limit: number | null
+  log_payloads: boolean
+  /** The member who owns this app. */
+  owner_email: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ApiKeyRow {
+  id: string
+  app_id: string
+  name: string
+  key_hash: string
+  key_prefix: string
+  last_four: string
+  expires_at: string | null
+  revoked_at: string | null
+  last_used_at: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface ProviderRow {
+  id: string
+  name: string
+  slug: string
+  type: ProviderType
+  config: ProviderConfig
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** Non-secret provider settings, stored in providers.config. */
+export interface ProviderConfig {
+  preset?: string
+  baseUrl?: string
+  apiVersion?: string
+  region?: string
+  project?: string
+  location?: string
+  headers?: Record<string, string>
+}
+
+/** Secret provider settings, encrypted into provider_secrets.ciphertext. */
+export interface ProviderCredentials {
+  apiKey?: string
+  accessKeyId?: string
+  secretAccessKey?: string
+  sessionToken?: string
+  serviceAccountJson?: string
+}
+
+export interface ProviderSecretRow {
+  provider_id: string
+  ciphertext: string
+  hint: string | null
+  updated_at: string
+}
+
+export type ModelKind = "chat" | "embedding"
+
+export interface ModelRow {
+  id: string
+  provider_id: string
+  model_id: string
+  slug: string
+  display_name: string | null
+  kind: ModelKind
+  enabled: boolean
+  capabilities: Capability[]
+  tags: string[]
+  context_window: number | null
+  max_output_tokens: number | null
+  /** null = unknown; 0 = free */
+  input_price_per_mtok: number | null
+  output_price_per_mtok: number | null
+  cached_input_price_per_mtok: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ModelHealthRow {
+  model_id: string
+  cooldown_until: string | null
+  consecutive_failures: number
+  last_status: number | null
+  last_error: string | null
+  last_failure_at: string | null
+  last_success_at: string | null
+  updated_at: string
+}
+
+export type RouteStrategy = "fallback" | "round_robin"
+
+export interface RouteRow {
+  id: string
+  name: string
+  description: string | null
+  kind: ModelKind
+  strategy: RouteStrategy
+  max_attempts: number
+  timeout_ms: number
+  first_token_timeout_ms: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface RouteTargetRow {
+  id: string
+  route_id: string
+  model_id: string
+  position: number
+}
+
+export interface AttemptLogEntry {
+  model_id: string
+  model: string
+  provider: string
+  status: number | null
+  error?: string
+  latency_ms: number
+  cooldown_s?: number
+}
+
+export interface RequestLogRow {
+  id: string
+  created_at: string
+  app_id: string | null
+  owner_email: string | null
+  api_key_id: string | null
+  endpoint: string
+  requested_model: string | null
+  route_id: string | null
+  model_id: string | null
+  provider_id: string | null
+  upstream_model: string | null
+  status: "success" | "error"
+  http_status: number | null
+  error_message: string | null
+  stream: boolean
+  attempts: number
+  attempt_log: AttemptLogEntry[]
+  input_tokens: number
+  output_tokens: number
+  cached_tokens: number
+  reasoning_tokens: number
+  usage_estimated: boolean
+  cost_usd: number
+  latency_ms: number | null
+  ttft_ms: number | null
+  user_agent: string | null
+}
+
+export interface RequestPayloadRow {
+  request_id: string
+  request: unknown
+  response: unknown
+  created_at: string
+}
+
+export interface UsageTimeseriesRow {
+  bucket: string
+  requests: number
+  errors: number
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+}
+
+export interface UsageBreakdownRow {
+  id: string | null
+  requests: number
+  errors: number
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+  avg_latency_ms: number | null
+}

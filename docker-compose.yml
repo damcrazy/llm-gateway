@@ -1,0 +1,9 @@
+# Run the gateway locally: cp .env.example .env, fill it in, then `docker compose up --build`.
+services:
+  gateway:
+    build: .
+    image: llm-gateway:latest
+    env_file: .env
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

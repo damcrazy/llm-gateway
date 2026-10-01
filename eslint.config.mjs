@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored registry code (shadcn / Animate UI), updated via the shadcn CLI.
+    "components/ui/**",
+    "components/animate-ui/**",
+    "hooks/**",
   ]),
 ]);
 
