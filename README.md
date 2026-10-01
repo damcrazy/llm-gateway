@@ -48,7 +48,6 @@ Azure OpenAI · Anthropic · AWS Bedrock · Google Vertex · Google AI Studio
 
 1. Create a project and link it: `supabase link --project-ref <ref>`.
 2. Apply the schema: `supabase db push`. This runs the migrations in `supabase/migrations/`, including the admin allowlist.
-   - **Admin emails:** `kalyanb2000@gmail.com` is added as superadmin and `bkalyan.eth@gmail.com` as admin.
    - **Log retention:** `pg_cron` jobs delete request logs after 30 days and payloads after 7 days.
 3. **Authentication → Sign In / Providers:** keep the **Email** provider on and turn **off** "Allow new users to sign up". Nobody can register themselves; the superadmin creates accounts from the Admins page (service role), which that setting doesn't block.
 4. **Create the superadmin account:** Authentication → Users → Add user, with the superadmin email, a strong password and "Auto confirm" ticked. After that, add other admins from the dashboard.
