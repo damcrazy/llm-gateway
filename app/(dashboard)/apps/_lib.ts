@@ -4,6 +4,21 @@ import type { ApiKeyRow } from "@/lib/db/types"
 
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/
 
+/** Same rule as app_buckets.name in the database. */
+export const BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/
+export const MAX_BUCKETS = 20
+export const MAX_BUCKET_MODELS = 25
+
+/** "My Smart Models!" -> "my-smart-models" */
+export function toBucketName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .slice(0, 40)
+}
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

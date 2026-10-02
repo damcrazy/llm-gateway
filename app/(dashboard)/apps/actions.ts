@@ -4,12 +4,21 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { accessPolicy, describePolicy, modelPermitted } from "@/lib/access"
 import { requireMember, type SessionMember } from "@/lib/auth"
 import { generateApiKey } from "@/lib/crypto"
+import type { MemberRow, ModelRow } from "@/lib/db/types"
 import { invalidateApiKeyCache } from "@/lib/gateway/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
-import { EXPIRY_OPTIONS, SLUG_PATTERN, type ExpiryValue } from "./_lib"
+import {
+  BUCKET_NAME_PATTERN,
+  EXPIRY_OPTIONS,
+  MAX_BUCKET_MODELS,
+  MAX_BUCKETS,
+  SLUG_PATTERN,
+  type ExpiryValue,
+} from "./_lib"
 
 const idSchema = z.uuid()
 
@@ -103,40 +112,22 @@ export async function createApp(
   }
 }
 
-const settingsSchema = z
-  .object({
-    name: nameSchema,
-    description: descriptionSchema,
-    allowedModels: z
-      .array(z.string().trim().min(1).max(200))
-      .max(200, "Too many allowed models")
-      .transform((values) => [...new Set(values)]),
-    defaultModel: z
-      .string()
-      .trim()
-      .max(200)
-      .nullable()
-      .transform((value) => value || null),
-    monthlyBudgetUsd: z
-      .number("Budget must be a number")
-      .min(0, "Budget cannot be negative")
-      .max(10_000_000, "Budget is too large")
-      .nullable(),
-    rpmLimit: z
-      .number("RPM limit must be a number")
-      .int("RPM limit must be a whole number")
-      .positive("RPM limit must be greater than zero")
-      .max(1_000_000, "RPM limit is too large")
-      .nullable(),
-    logPayloads: z.boolean(),
-  })
-  .refine(
-    (value) =>
-      !value.defaultModel ||
-      value.allowedModels.length === 0 ||
-      value.allowedModels.includes(value.defaultModel),
-    { message: "The default model must be one of the allowed models" }
-  )
+const settingsSchema = z.object({
+  name: nameSchema,
+  description: descriptionSchema,
+  monthlyBudgetUsd: z
+    .number("Budget must be a number")
+    .min(0, "Budget cannot be negative")
+    .max(10_000_000, "Budget is too large")
+    .nullable(),
+  rpmLimit: z
+    .number("RPM limit must be a number")
+    .int("RPM limit must be a whole number")
+    .positive("RPM limit must be greater than zero")
+    .max(1_000_000, "RPM limit is too large")
+    .nullable(),
+  logPayloads: z.boolean(),
+})
 
 export type AppSettingsInput = z.input<typeof settingsSchema>
 
@@ -155,8 +146,6 @@ export async function updateAppSettings(
     .update({
       name: s.name,
       description: s.description,
-      allowed_models: s.allowedModels,
-      default_model: s.defaultModel,
       monthly_budget_usd: s.monthlyBudgetUsd,
       rpm_limit: s.rpmLimit,
       log_payloads: s.logPayloads,
@@ -167,6 +156,123 @@ export async function updateAppSettings(
   invalidateApiKeyCache()
   revalidateApp(id)
   return { ok: true, message: "Settings saved" }
+}
+
+type OwnerAccess = Pick<MemberRow, "role" | "model_access" | "allowed_models">
+type PricedModel = Pick<
+  ModelRow,
+  "id" | "slug" | "input_price_per_mtok" | "output_price_per_mtok"
+>
+
+const bucketsSchema = z
+  .object({
+    buckets: z
+      .array(
+        z.object({
+          name: z
+            .string()
+            .trim()
+            .min(1, "Give the bucket a name")
+            .max(40, "Bucket names can be up to 40 characters")
+            .regex(
+              BUCKET_NAME_PATTERN,
+              "Bucket names use lowercase letters, numbers, dots, dashes and underscores"
+            )
+            .refine((name) => name !== "default", {
+              message:
+                '"default" is reserved: clients send it to mean the default bucket',
+            }),
+          modelIds: z
+            .array(z.uuid())
+            .max(
+              MAX_BUCKET_MODELS,
+              `A bucket can hold up to ${MAX_BUCKET_MODELS} models`
+            )
+            .transform((ids) => [...new Set(ids)]),
+        })
+      )
+      .max(MAX_BUCKETS, `An app can have up to ${MAX_BUCKETS} buckets`),
+    defaultBucket: z.string().nullable(),
+    onlyBucketModels: z.boolean(),
+  })
+  .refine(
+    (value) =>
+      new Set(value.buckets.map((b) => b.name)).size === value.buckets.length,
+    { message: "Two buckets have the same name" }
+  )
+  .refine(
+    (value) =>
+      value.defaultBucket === null ||
+      value.buckets.some((b) => b.name === value.defaultBucket),
+    { message: "The default must be one of the buckets" }
+  )
+
+export type AppBucketsInput = z.input<typeof bucketsSchema>
+
+/**
+ * Saves an app's buckets (named, ordered model chains), its default bucket
+ * and whether it may call anything outside them, in one transaction.
+ */
+export async function saveAppBuckets(
+  id: string,
+  input: AppBucketsInput
+): Promise<ActionResult> {
+  const access = await requireAppAccess(id)
+  if (isDenied(access)) return access
+  const parsed = bucketsSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) }
+  const value = parsed.data
+
+  // Every model must exist and be one the app's owner is allowed to call.
+  const db = supabaseAdmin()
+  const modelIds = [...new Set(value.buckets.flatMap((b) => b.modelIds))]
+  const [{ data: app }, { data: models, error: modelsError }] =
+    await Promise.all([
+      db
+        .from("apps")
+        .select("owner_email, members(role, model_access, allowed_models)")
+        .eq("id", id)
+        .maybeSingle(),
+      modelIds.length
+        ? db
+            .from("models")
+            .select("id, slug, input_price_per_mtok, output_price_per_mtok")
+            .in("id", modelIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+  if (modelsError) return actionError(modelsError)
+  const owner = (app as { members: OwnerAccess | null } | null)?.members
+  if (!owner) return { ok: false, error: "Unknown app" }
+  const policy = accessPolicy(owner)
+  const found = new Map(
+    ((models ?? []) as PricedModel[]).map((model) => [model.id, model])
+  )
+  for (const modelId of modelIds) {
+    const model = found.get(modelId)
+    if (!model)
+      return { ok: false, error: "One of the models no longer exists" }
+    if (!modelPermitted(policy, model)) {
+      return {
+        ok: false,
+        error: `${model.slug} isn't available to this app's owner (${describePolicy(policy)})`,
+      }
+    }
+  }
+
+  const { error } = await db.rpc("save_app_buckets", {
+    p_app_id: id,
+    p_buckets: value.buckets.map((b) => ({
+      name: b.name,
+      model_ids: b.modelIds,
+    })),
+    p_default: value.defaultBucket,
+    p_only_bucket_models: value.onlyBucketModels,
+  })
+  if (error) return actionError(error)
+
+  invalidateApiKeyCache()
+  revalidateApp(id)
+  return { ok: true, message: "Buckets saved" }
 }
 
 export async function setAppEnabled(

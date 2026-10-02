@@ -2,7 +2,12 @@ import "server-only"
 
 import { API_KEY_PREFIX, hashApiKey } from "@/lib/crypto"
 import { accessPolicy, type AccessPolicy } from "@/lib/access"
-import type { AppRow, MemberRow } from "@/lib/db/types"
+import type {
+  AppBucketRow,
+  AppRow,
+  GatewayApp,
+  MemberRow,
+} from "@/lib/db/types"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
 import { background } from "./background"
@@ -17,7 +22,7 @@ export interface KeyOwner {
 
 export interface AuthContext {
   keyId: string
-  app: AppRow
+  app: GatewayApp
   owner: KeyOwner
 }
 
@@ -67,6 +72,21 @@ export function extractApiKey(request: Request): string | undefined {
 
 const OWNER_COLUMNS =
   "members(email, role, model_access, allowed_models, monthly_budget_usd)"
+const BUCKET_COLUMNS = "app_buckets(name, position, model_ids)"
+
+type AppWithRelations = AppRow & {
+  members: OwnerFields | null
+  app_buckets: Pick<AppBucketRow, "name" | "position" | "model_ids">[] | null
+}
+
+function toGatewayApp(row: AppWithRelations): GatewayApp {
+  return {
+    ...row,
+    buckets: [...(row.app_buckets ?? [])]
+      .sort((a, b) => a.position - b.position)
+      .map((bucket) => ({ name: bucket.name, model_ids: bucket.model_ids })),
+  }
+}
 
 function toKeyOwner(owner: OwnerFields): KeyOwner {
   return {
@@ -88,13 +108,13 @@ export async function loadAppContext(
 ): Promise<AuthContext | null> {
   const { data, error } = await supabaseAdmin()
     .from("apps")
-    .select(`*, ${OWNER_COLUMNS}`)
+    .select(`*, ${OWNER_COLUMNS}, ${BUCKET_COLUMNS}`)
     .eq("id", appId)
     .maybeSingle()
   if (error) throw new Error(error.message)
-  const row = data as (AppRow & { members: OwnerFields | null }) | null
+  const row = data as AppWithRelations | null
   if (!row?.members) return null
-  return { keyId: "", app: row, owner: toKeyOwner(row.members) }
+  return { keyId: "", app: toGatewayApp(row), owner: toKeyOwner(row.members) }
 }
 
 async function lookupKey(hash: string): Promise<CachedKey | null> {
@@ -103,7 +123,9 @@ async function lookupKey(hash: string): Promise<CachedKey | null> {
 
   const { data, error } = await supabaseAdmin()
     .from("api_keys")
-    .select(`id, revoked_at, expires_at, apps(*, ${OWNER_COLUMNS})`)
+    .select(
+      `id, revoked_at, expires_at, apps(*, ${OWNER_COLUMNS}, ${BUCKET_COLUMNS})`
+    )
     .eq("key_hash", hash)
     .maybeSingle()
   if (error) {
@@ -118,7 +140,7 @@ async function lookupKey(hash: string): Promise<CachedKey | null> {
     id: string
     revoked_at: string | null
     expires_at: string | null
-    apps: (AppRow & { members: OwnerFields | null }) | null
+    apps: AppWithRelations | null
   } | null
   // An app always has an owner; without one (removed member) the key is dead.
   const owner = row?.apps?.members
@@ -126,7 +148,7 @@ async function lookupKey(hash: string): Promise<CachedKey | null> {
     row?.apps && owner
       ? {
           keyId: row.id,
-          app: row.apps,
+          app: toGatewayApp(row.apps),
           owner: toKeyOwner(owner),
           revokedAt: row.revoked_at,
           expiresAt: row.expires_at,

@@ -87,6 +87,7 @@ const NO_APP = "__none"
 
 function optionNames(options: PlaygroundOptions): string[] {
   return [
+    ...options.buckets.map((bucket) => bucket.name),
     ...options.routes.map((route) => route.name),
     ...options.modelGroups.flatMap((group) =>
       group.models.map((model) => model.slug)
@@ -160,7 +161,7 @@ export function PlaygroundClient({
   const [options, setOptions] = useState(initialOptions)
   const [loadingOptions, startLoadingOptions] = useTransition()
   const [model, setModel] = useState(initialModel)
-  const { routes, modelGroups } = options
+  const { buckets, routes, modelGroups } = options
   const selectedApp = apps.find((app) => app.id === appId)
   const [system, setSystem] = useState("")
   const [temperature, setTemperature] = useState("")
@@ -172,7 +173,10 @@ export function PlaygroundClient({
   const endRef = useRef<HTMLDivElement>(null)
   const isMac = useIsMac()
 
-  const selectedRoute = routes.find((route) => route.name === model)
+  const selectedBucket = buckets.find((bucket) => bucket.name === model)
+  const selectedRoute = selectedBucket
+    ? undefined
+    : routes.find((route) => route.name === model)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
@@ -364,7 +368,9 @@ export function PlaygroundClient({
                 Route or model
                 {loadingOptions && <Spinner className="size-3" />}
               </FieldLabel>
-              {routes.length === 0 && modelGroups.length === 0 ? (
+              {buckets.length === 0 &&
+              routes.length === 0 &&
+              modelGroups.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {selectedApp
                     ? "This app can't call any enabled chat route or model."
@@ -379,8 +385,23 @@ export function PlaygroundClient({
                     <SelectValue placeholder="Pick a route or model" />
                   </SelectTrigger>
                   <SelectContent position="popper" className="max-h-80">
+                    {buckets.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel>This app&apos;s buckets</SelectLabel>
+                        {buckets.map((bucket) => (
+                          <SelectItem
+                            key={bucket.name}
+                            value={bucket.name}
+                            className="font-mono"
+                          >
+                            {bucket.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
                     {routes.length > 0 && (
                       <SelectGroup>
+                        {buckets.length > 0 && <SelectSeparator />}
                         <SelectLabel>Routes</SelectLabel>
                         {routes.map((route) => (
                           <SelectItem
@@ -395,9 +416,9 @@ export function PlaygroundClient({
                     )}
                     {modelGroups.map((group, index) => (
                       <SelectGroup key={group.provider}>
-                        {(index > 0 || routes.length > 0) && (
-                          <SelectSeparator />
-                        )}
+                        {(index > 0 ||
+                          routes.length > 0 ||
+                          buckets.length > 0) && <SelectSeparator />}
                         <SelectLabel>{group.provider}</SelectLabel>
                         {group.models.map((option) => (
                           <SelectItem
@@ -414,13 +435,15 @@ export function PlaygroundClient({
                 </Select>
               )}
               <FieldDescription>
-                {selectedRoute
-                  ? `${selectedRoute.description ? `${selectedRoute.description}. ` : ""}Route with ${
-                      selectedRoute.strategy === "round_robin"
-                        ? "round-robin"
-                        : "fallback"
-                    } across its models.`
-                  : "Direct model call: no fallback to other models."}
+                {selectedBucket
+                  ? `Bucket: tries ${selectedBucket.chain.join(" → ")} in order, moving on when one fails.`
+                  : selectedRoute
+                    ? `${selectedRoute.description ? `${selectedRoute.description}. ` : ""}Route with ${
+                        selectedRoute.strategy === "round_robin"
+                          ? "round-robin"
+                          : "fallback"
+                      } across its models.`
+                    : "Direct model call: no fallback to other models."}
               </FieldDescription>
             </Field>
             <Field>

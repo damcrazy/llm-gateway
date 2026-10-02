@@ -4,7 +4,7 @@ import type {
   ProviderRuntime,
   RouteRuntime,
 } from "@/lib/gateway/config"
-import type { AppRow } from "@/lib/db/types"
+import type { GatewayApp } from "@/lib/db/types"
 
 let counter = 0
 const id = (prefix: string) => `${prefix}-${++counter}`
@@ -92,15 +92,16 @@ export function snapshot(
   }
 }
 
-export function app(overrides: Partial<AppRow> = {}): AppRow {
+export function app(overrides: Partial<GatewayApp> = {}): GatewayApp {
   return {
     id: id("app"),
     name: "Test app",
     slug: "test-app",
     description: null,
     enabled: true,
-    allowed_models: [],
     default_model: null,
+    only_bucket_models: false,
+    buckets: [],
     monthly_budget_usd: null,
     rpm_limit: null,
     log_payloads: false,

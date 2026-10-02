@@ -5,6 +5,7 @@ import {
   ChartNoAxesColumnIcon,
   CodeIcon,
   KeyRoundIcon,
+  LayersIcon,
   SettingsIcon,
   TriangleAlertIcon,
 } from "lucide-react"
@@ -32,14 +33,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { accessPolicy, modelPermitted } from "@/lib/access"
+import { accessPolicy, describePolicy, modelPermitted } from "@/lib/access"
 import { getOrigin, requireMember } from "@/lib/auth"
 import type {
+  AppBucketRow,
   AppRow,
+  ModelHealthRow,
   ModelRow,
   RouteRow,
   UsageBreakdownRow,
 } from "@/lib/db/types"
+import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 import {
@@ -50,13 +54,16 @@ import {
   type ApiKeyListRow,
 } from "../_lib"
 import { AppEnabledSwitch, DeleteAppButton } from "./app-controls"
+import type { BucketModel, BucketsData, ModelStatus } from "./buckets-shared"
 import { IntegrateSection } from "./integrate-section"
 import { KeysSection } from "./keys-section"
+import { ModelsSection } from "./models-section"
 import { AppSettingsForm } from "./settings-form"
 import { UsageSection } from "./usage-section"
 
 const TABS = [
   { value: "keys", label: "Keys", icon: KeyRoundIcon },
+  { value: "models", label: "Models", icon: LayersIcon },
   { value: "settings", label: "Settings", icon: SettingsIcon },
   { value: "usage", label: "Usage", icon: ChartNoAxesColumnIcon },
   { value: "integrate", label: "Integrate", icon: CodeIcon },
@@ -97,6 +104,10 @@ export default async function AppPage({ params, searchParams }: Props) {
     modelsResult,
     usageResult,
     monthResult,
+    monthByModelResult,
+    bucketsResult,
+    healthResult,
+    providersResult,
     origin,
   ] = await Promise.all([
     supabase.from("apps").select("*").eq("id", id).maybeSingle(),
@@ -109,7 +120,7 @@ export default async function AppPage({ params, searchParams }: Props) {
     supabase
       .from("models")
       .select(
-        "id, slug, kind, enabled, input_price_per_mtok, output_price_per_mtok"
+        "id, provider_id, model_id, slug, display_name, kind, enabled, capabilities, context_window, input_price_per_mtok, output_price_per_mtok"
       )
       .order("slug"),
     supabase.rpc("usage_breakdown", {
@@ -122,6 +133,21 @@ export default async function AppPage({ params, searchParams }: Props) {
       p_dimension: "app",
       p_app: id,
     }),
+    supabase.rpc("usage_breakdown", {
+      p_since: startOfMonthUtc(),
+      p_dimension: "model",
+      p_app: id,
+    }),
+    supabase
+      .from("app_buckets")
+      .select("name, position, model_ids")
+      .eq("app_id", id)
+      .order("position"),
+    supabase
+      .from("model_health")
+      .select("model_id, cooldown_until, consecutive_failures"),
+    // Members can't read providers; only names and on/off state are needed.
+    supabaseAdmin().from("providers").select("id, name, enabled"),
     getOrigin(),
   ])
 
@@ -137,9 +163,14 @@ export default async function AppPage({ params, searchParams }: Props) {
   const models = (modelsResult.data ?? []) as Pick<
     ModelRow,
     | "id"
+    | "provider_id"
+    | "model_id"
     | "slug"
+    | "display_name"
     | "kind"
     | "enabled"
+    | "capabilities"
+    | "context_window"
     | "input_price_per_mtok"
     | "output_price_per_mtok"
   >[]
@@ -147,51 +178,46 @@ export default async function AppPage({ params, searchParams }: Props) {
   const month = (monthResult.data ?? []) as UsageBreakdownRow[]
 
   // Only offer what the app's owner is allowed to call.
-  const [{ data: owner }, { data: targetRows }] = await Promise.all([
-    supabase
-      .from("members")
-      .select("role, model_access, allowed_models")
-      .eq("email", app.owner_email)
-      .maybeSingle(),
-    supabase.from("route_targets").select("route_id, model_id"),
-  ])
+  const { data: owner } = await supabase
+    .from("members")
+    .select("role, model_access, allowed_models")
+    .eq("email", app.owner_email)
+    .maybeSingle()
   const policy = owner
     ? accessPolicy(owner as Parameters<typeof accessPolicy>[0])
     : { access: "all" as const }
-  const modelById = new Map(models.map((m) => [m.id, m]))
-  const targetsByRoute = new Map<string, string[]>()
-  for (const row of (targetRows ?? []) as {
-    route_id: string
-    model_id: string
-  }[]) {
-    targetsByRoute.set(row.route_id, [
-      ...(targetsByRoute.get(row.route_id) ?? []),
-      row.model_id,
-    ])
-  }
-  const options = {
-    routes: routes
-      .filter((r) => r.enabled)
-      .filter((r) =>
-        (targetsByRoute.get(r.id) ?? []).some((modelId) => {
-          const model = modelById.get(modelId)
-          return (
-            model?.enabled === true && modelPermitted(policy, model, r.name)
-          )
-        })
-      )
-      .map((r) => r.name),
-    models: models
-      .filter((m) => m.enabled && modelPermitted(policy, m))
-      .map((m) => m.slug),
-  }
   const modelSlugs = new Map(models.map((m) => [m.id, m.slug]))
   const monthSpend = month.reduce((sum, row) => sum + Number(row.cost_usd), 0)
 
-  const snippetModel = app.default_model ?? "smart"
+  const buckets = (
+    (bucketsResult.data ?? []) as Pick<
+      AppBucketRow,
+      "name" | "position" | "model_ids"
+    >[]
+  ).map((bucket) => ({ name: bucket.name, modelIds: bucket.model_ids }))
+  const bucketsData = buildBucketsData({
+    models,
+    providers: (providersResult.data ?? []) as {
+      id: string
+      name: string
+      enabled: boolean
+    }[],
+    health: (healthResult.data ?? []) as Pick<
+      ModelHealthRow,
+      "model_id" | "cooldown_until" | "consecutive_failures"
+    >[],
+    usage: (monthByModelResult.data ?? []) as UsageBreakdownRow[],
+    policy,
+    buckets,
+    app,
+  })
+
+  // Integrate snippets use the app's buckets when it has any.
+  const bucketNames = buckets.map((bucket) => bucket.name)
+  const snippetModel = app.default_model ?? bucketNames[0] ?? "smart"
   const extraModels = (
-    app.allowed_models.length
-      ? app.allowed_models
+    bucketNames.length
+      ? bucketNames
       : routes.filter((r) => r.enabled && r.kind === "chat").map((r) => r.name)
   ).filter((m) => m !== snippetModel)
 
@@ -200,7 +226,9 @@ export default async function AppPage({ params, searchParams }: Props) {
     routesResult.error ??
     modelsResult.error ??
     usageResult.error ??
-    monthResult.error
+    monthResult.error ??
+    monthByModelResult.error ??
+    bucketsResult.error
 
   return (
     <>
@@ -257,8 +285,12 @@ export default async function AppPage({ params, searchParams }: Props) {
           <KeysSection appId={app.id} keys={keys} />
         </TabsContent>
 
+        <TabsContent value="models" className="min-w-0">
+          <ModelsSection appId={app.id} data={bucketsData} />
+        </TabsContent>
+
         <TabsContent value="settings" className="min-w-0">
-          <AppSettingsForm key={app.updated_at} app={app} options={options} />
+          <AppSettingsForm key={app.updated_at} app={app} />
         </TabsContent>
 
         <TabsContent value="usage" className="min-w-0">
@@ -302,4 +334,113 @@ export default async function AppPage({ params, searchParams }: Props) {
       </Tabs>
     </>
   )
+}
+
+type PageModel = Pick<
+  ModelRow,
+  | "id"
+  | "provider_id"
+  | "model_id"
+  | "slug"
+  | "display_name"
+  | "kind"
+  | "enabled"
+  | "capabilities"
+  | "context_window"
+  | "input_price_per_mtok"
+  | "output_price_per_mtok"
+>
+
+/** Everything the Models tab shows: each model's price, health and usage. */
+function buildBucketsData({
+  models,
+  providers,
+  health,
+  usage,
+  policy,
+  buckets,
+  app,
+}: {
+  models: PageModel[]
+  providers: { id: string; name: string; enabled: boolean }[]
+  health: Pick<ModelHealthRow, "model_id" | "cooldown_until">[]
+  usage: UsageBreakdownRow[]
+  policy: ReturnType<typeof accessPolicy>
+  buckets: { name: string; modelIds: string[] }[]
+  app: AppRow
+}): BucketsData {
+  const providerById = new Map(providers.map((p) => [p.id, p]))
+  const cooldownById = new Map(
+    health
+      .filter((h) => h.cooldown_until)
+      .map((h) => [h.model_id, new Date(h.cooldown_until!).getTime()])
+  )
+  const usageById = new Map(
+    usage.filter((u) => u.id).map((u) => [u.id as string, u])
+  )
+  const now = Date.now()
+
+  const addable: string[] = []
+  const bucketModels: BucketModel[] = models.map((model) => {
+    const provider = providerById.get(model.provider_id)
+    const permitted = modelPermitted(policy, model)
+    const cooldownUntil = cooldownById.get(model.id) ?? 0
+    let status: ModelStatus = { kind: "ok" }
+    if (!model.enabled) {
+      status = { kind: "unavailable", label: "Turned off by an admin: skipped" }
+    } else if (!provider?.enabled) {
+      status = { kind: "unavailable", label: "Its provider is off: skipped" }
+    } else if (!permitted) {
+      status = {
+        kind: "unavailable",
+        label: "Not available to this app's owner: skipped",
+      }
+    } else if (cooldownUntil > now) {
+      const minutes = Math.max(1, Math.ceil((cooldownUntil - now) / 60_000))
+      status = {
+        kind: "cooling",
+        label: `Failing recently: tried last for about ${minutes} more min`,
+      }
+    }
+    if (model.enabled && provider?.enabled && permitted) addable.push(model.id)
+
+    const used = usageById.get(model.id)
+    return {
+      id: model.id,
+      slug: model.slug,
+      name: model.display_name || model.model_id,
+      provider: provider?.name ?? "Unknown provider",
+      kind: model.kind,
+      capabilities: model.capabilities ?? [],
+      contextWindow: model.context_window,
+      inputPrice:
+        model.input_price_per_mtok == null
+          ? null
+          : Number(model.input_price_per_mtok),
+      outputPrice:
+        model.output_price_per_mtok == null
+          ? null
+          : Number(model.output_price_per_mtok),
+      status,
+      usage: used
+        ? {
+            requests: Number(used.requests),
+            errors: Number(used.errors),
+            tokens: Number(used.input_tokens) + Number(used.output_tokens),
+            costUsd: Number(used.cost_usd),
+          }
+        : null,
+    }
+  })
+
+  return {
+    models: bucketModels,
+    addable,
+    buckets,
+    defaultBucket: buckets.some((b) => b.name === app.default_model)
+      ? app.default_model
+      : null,
+    onlyBucketModels: app.only_bucket_models,
+    ownerAccess: policy.access === "all" ? null : describePolicy(policy),
+  }
 }

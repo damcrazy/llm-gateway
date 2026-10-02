@@ -32,6 +32,8 @@ export interface PlaygroundRequest {
 }
 
 export interface PlaygroundOptions {
+  /** The app's own buckets: model slugs in the order they're tried. */
+  buckets: { name: string; chain: string[] }[]
   routes: {
     name: string
     description: string | null
@@ -43,7 +45,7 @@ export interface PlaygroundOptions {
   }[]
 }
 
-/** Chat routes and models the app (or, with no app, an admin) can call. */
+/** Chat buckets, routes and models the app (or, with no app, an admin) can call. */
 export async function playgroundOptions(
   context: AuthContext | null
 ): Promise<PlaygroundOptions> {
@@ -54,9 +56,19 @@ export async function playgroundOptions(
     context?.owner.policy
   ).filter((entry) => entry.kind === "chat")
 
+  const buckets: PlaygroundOptions["buckets"] = []
   const routes: PlaygroundOptions["routes"] = []
   const groups = new Map<string, PlaygroundOptions["modelGroups"][number]>()
   for (const entry of available) {
+    if (entry.bucket) {
+      buckets.push({
+        name: entry.bucket.name,
+        chain: entry.bucket.model_ids
+          .map((id) => snapshot.models.get(id)?.slug)
+          .filter((slug): slug is string => Boolean(slug)),
+      })
+      continue
+    }
     const route = snapshot.routes.get(entry.id)
     if (route) {
       routes.push({
@@ -76,6 +88,7 @@ export async function playgroundOptions(
     groups.set(model.provider.id, group)
   }
   return {
+    buckets,
     routes,
     modelGroups: [...groups.values()].sort((a, b) =>
       a.provider.localeCompare(b.provider)

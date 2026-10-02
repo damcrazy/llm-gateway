@@ -1,7 +1,7 @@
 import "server-only"
 
 import { describePolicy, modelPermitted, type AccessPolicy } from "@/lib/access"
-import type { AppRow, ModelKind } from "@/lib/db/types"
+import type { AppBucket, GatewayApp, ModelKind } from "@/lib/db/types"
 import { CAPABILITY_LABELS } from "@/lib/providers/catalog"
 
 import type { GatewaySnapshot, ModelRuntime, RouteRuntime } from "./config"
@@ -13,6 +13,8 @@ import { estimateRequestTokens, requiredCapabilities } from "./usage"
 export interface Resolution {
   requestedModel: string
   route?: RouteRuntime
+  /** Set when the name is one of the app's buckets. */
+  bucket?: AppBucket
   /** In the order they should be tried. */
   candidates: ModelRuntime[]
   maxAttempts: number
@@ -23,16 +25,19 @@ export interface Resolution {
 
 const DEFAULT_TIMEOUT_MS = 600_000
 const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 120_000
+/** A bucket's chain is tried in full, up to this many models. */
+const MAX_BUCKET_ATTEMPTS = 10
 const roundRobin = new Map<string, number>()
 
 export function resolveModel(
   snapshot: GatewaySnapshot,
   requested: string | undefined,
   kind: ModelKind,
-  app: AppRow | null,
+  app: GatewayApp | null,
   request?: ChatRequest,
   policy: AccessPolicy = { access: "all" }
 ): Resolution {
+  const buckets = app?.buckets ?? []
   let name = requested?.trim() ?? ""
   if (!name || name === "default") name = app?.default_model ?? ""
   if (!name) {
@@ -43,10 +48,23 @@ export function resolveModel(
     )
   }
 
-  const route = snapshot.routes.get(name)
+  // The app's own buckets come first, then global routes, then model slugs.
+  const bucket = buckets.find((b) => b.name === name)
+  const route = bucket ? undefined : snapshot.routes.get(name)
   let targets: ModelRuntime[]
 
-  if (route) {
+  if (bucket) {
+    targets = bucket.model_ids
+      .map((id) => snapshot.models.get(id))
+      .filter((model): model is ModelRuntime => Boolean(model))
+    if (!targets.length) {
+      throw new GatewayError(
+        503,
+        `Bucket '${name}' has no models yet. Add some on the app's Models tab.`,
+        "no_available_models"
+      )
+    }
+  } else if (route) {
     if (!route.enabled) {
       throw new GatewayError(
         404,
@@ -76,15 +94,16 @@ export function resolveModel(
     }
   }
 
-  if (app?.allowed_models.length) {
-    const allowed = new Set(app.allowed_models)
-    targets = allowed.has(name)
-      ? targets
-      : targets.filter((model) => allowed.has(model.slug))
+  if (app?.only_bucket_models && !bucket) {
+    const inBuckets = new Set(buckets.flatMap((b) => b.model_ids))
+    targets = targets.filter((model) => inBuckets.has(model.id))
     if (!targets.length) {
+      const names = buckets.map((b) => `'${b.name}'`).join(", ")
       throw new GatewayError(
         403,
-        `This API key's app is not allowed to use '${name}'.`,
+        names
+          ? `This API key's app only allows its buckets (${names}) and the models in them; '${name}' isn't one.`
+          : `This API key's app only allows models in its buckets, and it has none yet.`,
         "model_not_allowed",
         "permission_error"
       )
@@ -164,9 +183,11 @@ export function resolveModel(
   return {
     requestedModel: name,
     route,
+    bucket,
     candidates,
-    maxAttempts:
-      route?.max_attempts ?? Math.max(2, Math.min(candidates.length, 3)),
+    maxAttempts: bucket
+      ? Math.min(candidates.length, MAX_BUCKET_ATTEMPTS)
+      : (route?.max_attempts ?? Math.max(2, Math.min(candidates.length, 3))),
     timeoutMs: route?.timeout_ms ?? DEFAULT_TIMEOUT_MS,
     firstTokenTimeoutMs:
       route?.first_token_timeout_ms ?? DEFAULT_FIRST_TOKEN_TIMEOUT_MS,
@@ -174,30 +195,52 @@ export function resolveModel(
   }
 }
 
-/** Route names and model slugs an app may call, for GET /v1/models. */
-export function listAvailableModels(
-  snapshot: GatewaySnapshot,
-  app: AppRow | null,
-  policy: AccessPolicy = { access: "all" }
-): Array<{
+export interface AvailableEntry {
   id: string
   kind: ModelKind
   ownedBy: string
   created: string
   displayName: string
-}> {
-  const allowed = app?.allowed_models.length
-    ? new Set(app.allowed_models)
-    : null
-  const entries: Array<{
-    id: string
-    kind: ModelKind
-    ownedBy: string
-    created: string
-    displayName: string
-  }> = []
+  /** Set for the app's own buckets. */
+  bucket?: AppBucket
+}
+
+/** Bucket names, route names and model slugs an app may call, for GET /v1/models. */
+export function listAvailableModels(
+  snapshot: GatewaySnapshot,
+  app: GatewayApp | null,
+  policy: AccessPolicy = { access: "all" }
+): AvailableEntry[] {
+  const buckets = app?.buckets ?? []
+  const onlyBuckets = app?.only_bucket_models === true
+  const inBuckets = new Set(buckets.flatMap((b) => b.model_ids))
+  const usable = (model: ModelRuntime | undefined): model is ModelRuntime =>
+    Boolean(
+      model?.enabled && model.provider.enabled && modelPermitted(policy, model)
+    )
+
+  const bucketEntries: AvailableEntry[] = []
+  for (const bucket of buckets) {
+    const chain = bucket.model_ids
+      .map((id) => snapshot.models.get(id))
+      .filter(usable)
+    const first = chain[0]
+    if (!first || !app) continue
+    bucketEntries.push({
+      id: bucket.name,
+      kind: first.kind,
+      ownedBy: "app",
+      created: app.created_at,
+      displayName: `${bucket.name}: ${chain.map((m) => m.display_name || m.model_id).join(" → ")}`,
+      bucket,
+    })
+  }
+
+  const entries: AvailableEntry[] = []
+  const bucketNames = new Set(buckets.map((b) => b.name))
   for (const route of snapshot.routes.values()) {
-    if (!route.enabled || (allowed && !allowed.has(route.name))) continue
+    // Buckets hide global routes of the same name; "only buckets" hides all.
+    if (!route.enabled || onlyBuckets || bucketNames.has(route.name)) continue
     const reachable = route.targets.some((id) => {
       const model = snapshot.models.get(id)
       return (
@@ -217,7 +260,7 @@ export function listAvailableModels(
   }
   for (const model of snapshot.models.values()) {
     if (!model.enabled || !model.provider.enabled) continue
-    if (allowed && !allowed.has(model.slug)) continue
+    if (onlyBuckets && !inBuckets.has(model.id)) continue
     if (!modelPermitted(policy, model)) continue
     entries.push({
       id: model.slug,
@@ -227,5 +270,5 @@ export function listAvailableModels(
       displayName: model.display_name || model.model_id,
     })
   }
-  return entries.sort((a, b) => a.id.localeCompare(b.id))
+  return [...bucketEntries, ...entries.sort((a, b) => a.id.localeCompare(b.id))]
 }

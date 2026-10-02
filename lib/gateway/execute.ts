@@ -1,7 +1,7 @@
 import "server-only"
 
 import type { AccessPolicy } from "@/lib/access"
-import type { AppRow, ModelKind } from "@/lib/db/types"
+import type { GatewayApp, ModelKind } from "@/lib/db/types"
 
 import { adapterFor } from "./adapters"
 import { getSnapshot, type GatewaySnapshot, type ModelRuntime } from "./config"
@@ -238,7 +238,7 @@ export type ChatExecution = ChatOutput & { model: ModelRuntime }
 
 export async function executeChat(options: {
   request: ChatRequest
-  app: AppRow | null
+  app: GatewayApp | null
   policy?: AccessPolicy
   signal: AbortSignal
   recorder: RequestRecorder
@@ -395,7 +395,7 @@ export function finishJson(
 
 export async function executeEmbeddings(options: {
   request: EmbeddingsRequest
-  app: AppRow | null
+  app: GatewayApp | null
   policy?: AccessPolicy
   signal: AbortSignal
   recorder: RequestRecorder

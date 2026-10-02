@@ -26,8 +26,10 @@ export interface AppRow {
   slug: string
   description: string | null
   enabled: boolean
-  allowed_models: string[]
+  /** Bucket name (or model slug) used when a client sends no model. */
   default_model: string | null
+  /** Only bucket names and the models in them may be called. */
+  only_bucket_models: boolean
   monthly_budget_usd: number | null
   rpm_limit: number | null
   log_payloads: boolean
@@ -36,6 +38,26 @@ export interface AppRow {
   created_by: string | null
   created_at: string
   updated_at: string
+}
+
+/** A named, ordered chain of models an app calls like a model ("smart"). */
+export interface AppBucket {
+  name: string
+  /** Model ids in the order they're tried. */
+  model_ids: string[]
+}
+
+export interface AppBucketRow extends AppBucket {
+  id: string
+  app_id: string
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+/** An app as the gateway sees it: settings plus its buckets, in order. */
+export interface GatewayApp extends AppRow {
+  buckets: AppBucket[]
 }
 
 export interface ApiKeyRow {

@@ -125,16 +125,91 @@ describe("resolveModel", () => {
     )
   })
 
-  test("allowed_models restricts what an app can call", () => {
-    const snap = snapshot([fast, vision], [route("smart", [fast, vision])])
-    const a = app({ allowed_models: ["groq/llama-3.3-70b"] })
-    expect(() =>
-      resolveModel(snap, "openrouter/gpt-4o", "chat", a, chat())
-    ).toThrow(GatewayError)
-    // A route not in the list is narrowed to allowed targets.
+  test("an app's bucket is tried in its order, in full", () => {
+    const third = model(groq, "mixtral")
+    const snap = snapshot([fast, vision, third])
+    const a = app({
+      buckets: [{ name: "smart", model_ids: [vision.id, third.id, fast.id] }],
+    })
+    const result = resolveModel(snap, "smart", "chat", a, chat())
+    expect(result.bucket?.name).toBe("smart")
+    expect(result.candidates).toEqual([vision, third, fast])
+    expect(result.maxAttempts).toBe(3)
+  })
+
+  test("a bucket wins over a global route with the same name", () => {
+    const snap = snapshot([fast, vision], [route("smart", [fast])])
+    const a = app({ buckets: [{ name: "smart", model_ids: [vision.id] }] })
+    const result = resolveModel(snap, "smart", "chat", a, chat())
+    expect(result.route).toBeUndefined()
+    expect(result.candidates).toEqual([vision])
+    // Other apps still get the route.
+    expect(resolveModel(snap, "smart", "chat", app(), chat()).route?.name).toBe(
+      "smart"
+    )
+  })
+
+  test("the default can be a bucket", () => {
+    const snap = snapshot([fast, vision])
+    const a = app({
+      default_model: "cheap",
+      buckets: [{ name: "cheap", model_ids: [fast.id] }],
+    })
+    const result = resolveModel(snap, "", "chat", a, chat())
+    expect(result.bucket?.name).toBe("cheap")
+    expect(result.candidates).toEqual([fast])
+  })
+
+  test("an empty bucket is a clear 503", () => {
+    const a = app({ buckets: [{ name: "smart", model_ids: [] }] })
+    try {
+      resolveModel(snapshot([fast]), "smart", "chat", a, chat())
+      throw new Error("expected to throw")
+    } catch (error) {
+      expect((error as GatewayError).status).toBe(503)
+      expect((error as GatewayError).message).toContain("no models yet")
+    }
+  })
+
+  test("only_bucket_models limits an app to its buckets and their models", () => {
+    const snap = snapshot([fast, vision], [route("global", [fast, vision])])
+    const a = app({
+      only_bucket_models: true,
+      buckets: [{ name: "smart", model_ids: [fast.id] }],
+    })
     expect(resolveModel(snap, "smart", "chat", a, chat()).candidates).toEqual([
       fast,
     ])
+    // A model inside a bucket may be called directly…
+    expect(
+      resolveModel(snap, "groq/llama-3.3-70b", "chat", a, chat()).candidates
+    ).toEqual([fast])
+    // …but nothing else, and routes are narrowed to bucket models.
+    expect(() =>
+      resolveModel(snap, "openrouter/gpt-4o", "chat", a, chat())
+    ).toThrow(GatewayError)
+    expect(resolveModel(snap, "global", "chat", a, chat()).candidates).toEqual([
+      fast,
+    ])
+  })
+
+  test("a bucket can't reach models its owner isn't allowed to use", () => {
+    const free = model(groq, "free-one", {
+      input_price_per_mtok: 0,
+      output_price_per_mtok: 0,
+    })
+    const snap = snapshot([vision, free])
+    const a = app({
+      buckets: [{ name: "smart", model_ids: [vision.id, free.id] }],
+    })
+    const policy = accessPolicy({
+      role: "member",
+      model_access: "free",
+      allowed_models: [],
+    })
+    expect(
+      resolveModel(snap, "smart", "chat", a, chat(), policy).candidates
+    ).toEqual([free])
   })
 
   test("unknown models are a 404", () => {
@@ -235,6 +310,31 @@ describe("resolveModel", () => {
         (m) => m.id
       )
       expect(ids).toEqual(["mixed", "openrouter/llama:free"])
+    })
+  })
+
+  describe("/v1/models with buckets", () => {
+    test("buckets come first, named after their chain", () => {
+      const snap = snapshot([fast, vision], [route("global", [fast])])
+      const a = app({
+        buckets: [{ name: "smart", model_ids: [vision.id, fast.id] }],
+      })
+      const entries = listAvailableModels(snap, a)
+      expect(entries[0]?.id).toBe("smart")
+      expect(entries[0]?.displayName).toBe("smart: gpt-4o → llama-3.3-70b")
+      expect(entries.map((e) => e.id)).toContain("global")
+    })
+
+    test("only_bucket_models lists just buckets and their models", () => {
+      const snap = snapshot([fast, vision], [route("global", [fast])])
+      const a = app({
+        only_bucket_models: true,
+        buckets: [{ name: "smart", model_ids: [fast.id] }],
+      })
+      expect(listAvailableModels(snap, a).map((e) => e.id)).toEqual([
+        "smart",
+        "groq/llama-3.3-70b",
+      ])
     })
   })
 })

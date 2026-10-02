@@ -82,7 +82,7 @@ const loadRoute = cache(async (id: string) => {
     supabase
       .from("model_health")
       .select("model_id, cooldown_until, last_error"),
-    supabase.from("apps").select("name, default_model, allowed_models"),
+    supabase.from("apps").select("name, default_model"),
   ])
 
   const providers = new Map(
@@ -141,16 +141,9 @@ const loadRoute = cache(async (id: string) => {
     .filter((modelId) => known.has(modelId))
 
   const usedBy = (
-    (appsResult.data ?? []) as Pick<
-      AppRow,
-      "name" | "default_model" | "allowed_models"
-    >[]
+    (appsResult.data ?? []) as Pick<AppRow, "name" | "default_model">[]
   )
-    .filter(
-      (app) =>
-        app.default_model === route.name ||
-        (app.allowed_models ?? []).includes(route.name)
-    )
+    .filter((app) => app.default_model === route.name)
     .map((app) => app.name)
 
   return { route, models, targetIds, usedBy }

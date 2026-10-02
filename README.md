@@ -142,8 +142,15 @@ bun run typecheck && bun run lint && bun run test
    - Models are **Free** ($0 known), **Paid** or **Unknown** (no price info).
    - Filter by these in the Discover dialog to import only free models.
    - On the model tables, use **Enable/Disable N shown** to switch a whole tier on or off.
-2. **Routes:** create a route, e.g. `smart`, and order its fallback models.
-3. **Apps & keys:** register the app and create a key. The **Integrate** tab has copy-paste snippets.
+2. **Apps & keys:** register the app and create a key. The **Integrate** tab has copy-paste snippets.
+3. **Buckets** (the app's **Models** tab): name a bucket, e.g. `smart`, `fast` or `free`, and fill it with models.
+   - Drag rows from the model table onto a bucket, or use **Add**.
+   - Drag cards to order them (keyboard works too: focus the grip, Space, arrow keys, Space). The order is the fallback chain: your code calls `model: "smart"`, and the gateway tries the models top to bottom, moving on when one fails, is rate-limited or is cooling down.
+   - Each card shows price, context, capabilities, health, and this app's requests, tokens and cost for the month.
+   - Star a bucket as the **default**, used when a request has no model or `model: "default"`.
+   - Turn on **Only allow models in these buckets** to stop the app's keys from calling anything else.
+   - Changes save automatically and reach API calls within 30 seconds.
+   - A bucket wins over a global route with the same name, for that app only. Admins can still define global **Routes** shared by every app.
 
 ```python
 from langchain_openai import ChatOpenAI
@@ -206,9 +213,14 @@ supabase/migrations/      schema, RLS, hooks, rollups, retention jobs
 
 ### Local patches to vendored UI code
 
-`components/ui` and `components/animate-ui` come from the shadcn / Animate UI registries. Two Animate UI files carry fixes that aren't upstream yet. Re-apply them if you reinstall with `--overwrite`:
+`components/ui` and `components/animate-ui` come from the shadcn / Animate UI registries (the Kanban board from Dice UI's, since Animate UI has no drag-and-drop list). A few files carry fixes that aren't upstream yet. Re-apply them if you reinstall with `--overwrite`:
 
 - `primitives/animate/slot.tsx`: unwraps lazy children coming from Server Components. Without it, `<Button asChild><Link/></Button>` in a server page can crash with `reading 'displayName'`.
 - `primitives/effects/highlight.tsx`: chains `onMouseEnter`/`onMouseLeave` passed to `HighlightItem`. Without it, the collapsed sidebar's tooltips never open.
 - `primitives/radix/switch.tsx`: keeps Radix-only props (`onCheckedChange`, …) off the DOM button.
+- `lib/compose-refs.ts` (from Dice UI, used by `components/ui/kanban.tsx`): its lint suppression is rewritten for ESLint (upstream uses oxlint).
+- `components/ui/kanban.tsx` (Dice UI), two keyboard fixes; upstream, keyboard reordering doesn't work at all:
+  - the keyboard coordinate getter uses `continue` instead of `return` inside its loop, so arrow keys move the card;
+  - `isCancelled()` ignores the `preventDefault()` that dnd-kit's KeyboardSensor always applies to the key that starts a drag, so keyboard drags aren't treated as cancelled.
+  - the coordinate getter skips the target it's already over and uses rects re-measured after scrolling, as dnd-kit's own `sortableKeyboardCoordinates` does, so arrow keys keep working once the page scrolls.
 - Every file under `components/animate-ui` starts with `'use client'`. Some registry files ship without it. Server pages then render them on the server, and tabs hit hydration mismatches.
