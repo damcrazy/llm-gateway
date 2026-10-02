@@ -63,8 +63,10 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
         .from("route_targets")
         .select("route_id, model_id, position")
         .order("position"),
-      // Members can't read providers; only their on/off state is needed here.
-      supabaseAdmin().from("providers").select("id, enabled, owner_email"),
+      // Members can't read shared providers; names and state are enough here.
+      supabaseAdmin()
+        .from("providers")
+        .select("id, name, enabled, owner_email"),
     ])
 
   const policy = accessPolicy({
@@ -74,9 +76,13 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
   })
   const providerRows = (providersResult.data ?? []) as {
     id: string
+    name: string
     enabled: boolean
     owner_email: string | null
   }[]
+  const providerName = new Map(
+    providerRows.map((provider) => [provider.id, provider.name])
+  )
   const liveProviders = new Set(
     providerRows
       .filter((provider) => provider.enabled)
@@ -130,6 +136,7 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
     .filter((model) => usable(model))
     .map((model) => ({
       own: ownerOf.get(model.provider_id) === member.email,
+      provider: providerName.get(model.provider_id) ?? "Unknown provider",
       slug: model.slug,
       displayName: model.display_name,
       kind: model.kind,

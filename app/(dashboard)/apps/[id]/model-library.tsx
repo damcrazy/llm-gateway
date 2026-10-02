@@ -14,6 +14,10 @@ import {
 } from "@/components/animate-ui/components/radix/dropdown-menu"
 import { ModelPrice } from "@/components/model-price"
 import {
+  ModelSourceFilter,
+  type ModelSource,
+} from "@/components/model-source-filter"
+import {
   PriceTierFilter,
   type PriceTierFilterValue,
 } from "@/components/price-tier-filter"
@@ -73,6 +77,7 @@ export function ModelLibrary({
 }) {
   const [search, setSearch] = useState("")
   const [tier, setTier] = useState<PriceTierFilterValue>("all")
+  const [source, setSource] = useState<ModelSource>("all")
 
   const library = useMemo(() => {
     const allowed = new Set(addable)
@@ -80,10 +85,13 @@ export function ModelLibrary({
       .filter((model) => allowed.has(model.id))
       .sort(
         (a, b) =>
+          // Your own providers first, then the most used.
+          Number(b.own) - Number(a.own) ||
           (b.usage?.requests ?? 0) - (a.usage?.requests ?? 0) ||
           a.slug.localeCompare(b.slug)
       )
   }, [models, addable])
+  const hasOwn = library.some((model) => model.own)
 
   const searched = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -95,10 +103,16 @@ export function ModelLibrary({
     )
   }, [library, search])
 
-  const visible = useMemo(
+  const scoped = useMemo(
     () =>
-      tier === "all" ? searched : searched.filter((m) => tierOf(m) === tier),
-    [searched, tier]
+      source === "all"
+        ? searched
+        : searched.filter((model) => model.own === (source === "own")),
+    [searched, source]
+  )
+  const visible = useMemo(
+    () => (tier === "all" ? scoped : scoped.filter((m) => tierOf(m) === tier)),
+    [scoped, tier]
   )
 
   const bucketsByModel = useMemo(() => {
@@ -133,10 +147,20 @@ export function ModelLibrary({
               onChange={(event) => setSearch(event.target.value)}
             />
           </InputGroup>
+          {hasOwn && (
+            <ModelSourceFilter
+              value={source}
+              onChange={setSource}
+              counts={{
+                own: searched.filter((model) => model.own).length,
+                shared: searched.filter((model) => !model.own).length,
+              }}
+            />
+          )}
           <PriceTierFilter
             value={tier}
             onChange={setTier}
-            counts={countByTier(searched, tierOf)}
+            counts={countByTier(scoped, tierOf)}
           />
         </div>
         <Table>
