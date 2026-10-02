@@ -5,12 +5,12 @@ import { describeNames, ENV_NAMES, readEnv } from "@/lib/env-names"
 
 // Refreshes the Supabase session cookie and sends signed-out visitors to
 // /login. This is only an optimistic check: the dashboard layout and every
-// server action verify admin access again (see lib/auth.ts).
+// server action verify membership and two-factor again (see lib/auth.ts).
 //
 // The gateway API (/v1/*) is excluded so request bodies are never buffered
 // here and API-key clients never see a redirect.
 
-const PUBLIC_PATHS = ["/login", "/auth/"]
+const PUBLIC_PATHS = ["/login", "/auth/", "/forgot-password"]
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })

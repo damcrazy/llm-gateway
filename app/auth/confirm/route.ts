@@ -1,40 +1,40 @@
 import { NextResponse, type NextRequest } from "next/server"
+import type { EmailOtpType } from "@supabase/supabase-js"
 
 import { getOrigin } from "@/lib/auth"
 import { keepOnlyMembers } from "@/lib/auth-session"
 import { safeNextPath } from "@/lib/safe-next"
 import { createClient } from "@/lib/supabase/server"
 
+// Only password-reset links; magic-link sign-in isn't offered.
+const ALLOWED_TYPES = new Set<EmailOtpType>(["recovery"])
+
 /**
- * OAuth (Google) and same-browser email links (PKCE) land here with a code.
- * With public sign-ups off, Supabase refuses Google sign-ins from anyone who
- * isn't already a member, and returns an error instead of a code.
+ * Email links built from the templates in supabase/templates
+ * ({{ .TokenHash }}). Unlike the default links these work when the email is
+ * opened on a different device or browser.
  */
 export async function GET(request: NextRequest) {
   const origin = await getOrigin()
   const params = request.nextUrl.searchParams
-  const code = params.get("code")
+  const tokenHash = params.get("token_hash")
+  const type = params.get("type") as EmailOtpType | null
   const next = safeNextPath(params.get("next"))
 
-  if (params.get("error") || !code) {
-    const description = params.get("error_description") ?? ""
-    const reason = /sign.?ups? not allowed|not allowed|access_denied/i.test(
-      description + (params.get("error") ?? "")
-    )
-      ? "forbidden"
-      : "oauth"
-    return NextResponse.redirect(`${origin}/login?error=${reason}`)
+  if (!tokenHash || !type || !ALLOWED_TYPES.has(type)) {
+    return NextResponse.redirect(`${origin}/login?error=link`)
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+  const { data, error } = await supabase.auth.verifyOtp({
+    type,
+    token_hash: tokenHash,
+  })
   if (error || !data.user) {
     return NextResponse.redirect(`${origin}/login?error=link`)
   }
   if (!(await keepOnlyMembers(data.user))) {
     return NextResponse.redirect(`${origin}/login?error=forbidden`)
   }
-
-  // The dashboard layout sends people on to 2FA setup or the 2FA challenge.
   return NextResponse.redirect(`${origin}${next}`)
 }

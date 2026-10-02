@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
 import { actionError, type ActionResult } from "@/lib/actions"
-import { getSessionMember, requireAdmin } from "@/lib/auth"
+import { getSessionState, pathForState, requireMember } from "@/lib/auth"
 import { env } from "@/lib/env"
 import { passwordProblem } from "@/lib/password"
 import { supabaseAdmin } from "@/lib/supabase/admin"
@@ -12,10 +12,14 @@ import { createClient } from "@/lib/supabase/server"
 
 /**
  * Called by the login form after the browser has signed in with Supabase:
- * only people listed in public.members keep their session.
+ * only people listed in public.members keep their session, and they go on
+ * to 2FA setup or the 2FA challenge.
  */
 export async function finishSignIn(): Promise<ActionResult> {
-  if (await getSessionMember()) redirect("/")
+  const state = await getSessionState()
+  if (state.status !== "signed_out" && state.status !== "not_member") {
+    redirect(pathForState(state))
+  }
   const supabase = await createClient()
   await supabase.auth.signOut()
   return {
@@ -34,7 +38,7 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string
 ): Promise<ActionResult> {
-  const me = await requireAdmin()
+  const me = await requireMember()
   const problem = passwordProblem(newPassword)
   if (problem) return { ok: false, error: problem }
   if (newPassword === currentPassword) {

@@ -4,8 +4,12 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
-import { requireSuperadmin } from "@/lib/auth"
-import { findAuthUserByEmail, upsertPasswordUser } from "@/lib/auth-users"
+import { requireSuperadmin, verifiedTotpFactors } from "@/lib/auth"
+import {
+  ensureUser,
+  findAuthUserByEmail,
+  upsertPasswordUser,
+} from "@/lib/auth-users"
 import { env } from "@/lib/env"
 import { invalidateApiKeyCache } from "@/lib/gateway/auth"
 import { passwordProblem } from "@/lib/password"
@@ -64,7 +68,8 @@ export async function addMember(
   const parsedAccess = accessSchema.safeParse(access)
   if (!parsedAccess.success)
     return { ok: false, error: firstIssue(parsedAccess.error) }
-  const problem = passwordProblem(password)
+  // Optional: people who'll sign in with Google don't need a password.
+  const problem = password ? passwordProblem(password) : null
   if (problem) return { ok: false, error: problem }
 
   const db = supabaseAdmin()
@@ -80,7 +85,8 @@ export async function addMember(
   }
 
   try {
-    await upsertPasswordUser(parsedEmail.data, password)
+    if (password) await upsertPasswordUser(parsedEmail.data, password)
+    else await ensureUser(parsedEmail.data)
   } catch (accountError) {
     await db.from("members").delete().eq("email", parsedEmail.data)
     return actionError(accountError)
@@ -89,7 +95,9 @@ export async function addMember(
   refresh()
   return {
     ok: true,
-    message: `${parsedEmail.data} can now sign in with the password you set`,
+    message: password
+      ? `${parsedEmail.data} can now sign in with the password you set`
+      : `${parsedEmail.data} can now sign in with Google`,
   }
 }
 
@@ -163,5 +171,69 @@ export async function removeMember(email: string): Promise<ActionResult> {
   return {
     ok: true,
     message: `${target} no longer has access; their apps and keys were deleted`,
+  }
+}
+
+/**
+ * Removes someone's authenticators (e.g. they lost their phone and can't use
+ * the email fallback). They must set up a new one at their next sign-in.
+ */
+export async function resetMemberTwoFactor(
+  email: string
+): Promise<ActionResult> {
+  const me = await requireSuperadmin()
+  const target = email.toLowerCase()
+  if (target === me.email) {
+    return {
+      ok: false,
+      error: "Manage your own authenticators on the Account & security page",
+    }
+  }
+  const user = await findAuthUserByEmail(target).catch(() => null)
+  if (!user) return { ok: false, error: "That person hasn't signed in yet" }
+  try {
+    const factors = await verifiedTotpFactors(user.id)
+    for (const factor of factors) {
+      const { error } = await supabaseAdmin().auth.admin.mfa.deleteFactor({
+        id: factor.id,
+        userId: user.id,
+      })
+      if (error) throw new Error(error.message)
+    }
+  } catch (error) {
+    return actionError(error)
+  }
+  revalidatePath("/members")
+  return {
+    ok: true,
+    message: `2FA reset for ${target}; they'll set it up again at next sign-in`,
+  }
+}
+
+/**
+ * Creates a sign-in account (no password) for someone who's listed but has
+ * none, e.g. added before Google sign-in existed. Public sign-ups are off, so
+ * Google sign-in only works once the account exists.
+ */
+export async function createMemberAccount(
+  email: string
+): Promise<ActionResult> {
+  await requireSuperadmin()
+  const target = email.toLowerCase()
+  const { data: member } = await supabaseAdmin()
+    .from("members")
+    .select("email")
+    .eq("email", target)
+    .maybeSingle()
+  if (!member) return { ok: false, error: "Not a member" }
+  try {
+    await ensureUser(target)
+  } catch (error) {
+    return actionError(error)
+  }
+  revalidatePath("/members")
+  return {
+    ok: true,
+    message: `${target} can now sign in with Google, or set a password with “Forgot password?”`,
   }
 }

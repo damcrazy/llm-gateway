@@ -3,6 +3,8 @@
 import { useId, useState, useTransition } from "react"
 import {
   KeyRoundIcon,
+  ShieldOffIcon,
+  UserCheckIcon,
   SlidersHorizontalIcon,
   Trash2Icon,
   UserPlusIcon,
@@ -38,6 +40,11 @@ import {
   ModelMultiSelect,
   type ModelOptions,
 } from "@/components/model-multi-select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/animate-ui/components/radix/tooltip"
 import { PasswordInput } from "@/components/password-input"
 import {
   Field,
@@ -60,8 +67,10 @@ import { MIN_PASSWORD_LENGTH, generatePassword } from "@/lib/password"
 
 import {
   addMember,
+  createMemberAccount,
   removeMember,
   resetMemberPassword,
+  resetMemberTwoFactor,
   updateMember,
 } from "./actions"
 import {
@@ -287,8 +296,12 @@ export function AddMemberDialog({ options }: { options: ModelOptions }) {
                 value={password}
                 onChange={setPassword}
                 generate
+                required={false}
               />
-              <FieldDescription>{PASSWORD_HELP}</FieldDescription>
+              <FieldDescription>
+                {PASSWORD_HELP} Leave it empty if they&apos;ll sign in with
+                Google; they can set one later with “Forgot password?”.
+              </FieldDescription>
             </Field>
             <AccessFields
               value={access}
@@ -486,5 +499,75 @@ export function RemoveMemberButton({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+export function ResetTwoFactorButton({ email }: { email: string }) {
+  const [pending, startTransition] = useTransition()
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Reset 2FA for ${email}`}
+        >
+          <ShieldOffIcon />
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Reset 2FA for {email}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Their authenticator apps are removed. At their next sign-in
+            they&apos;ll have to set up a new one before using the dashboard.
+            Only do this once you&apos;ve confirmed it&apos;s really them.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={pending}
+            className="bg-destructive text-white hover:bg-destructive/90"
+            onClick={() =>
+              startTransition(async () => {
+                const result = await resetMemberTwoFactor(email)
+                if (result.ok) toast.success(result.message)
+                else toast.error(result.error)
+              })
+            }
+          >
+            Reset 2FA
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+export function CreateAccountButton({ email }: { email: string }) {
+  const [pending, startTransition] = useTransition()
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled={pending}
+          aria-label={`Create account for ${email}`}
+          onClick={() =>
+            startTransition(async () => {
+              const result = await createMemberAccount(email)
+              if (result.ok) toast.success(result.message)
+              else toast.error(result.error)
+            })
+          }
+        >
+          <UserCheckIcon />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Create their account so they can sign in</TooltipContent>
+    </Tooltip>
   )
 }

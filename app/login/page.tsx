@@ -10,15 +10,31 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { getSessionMember } from "@/lib/auth"
+import { getSessionState, pathForState } from "@/lib/auth"
+import { getAuthSettings } from "@/lib/auth-settings"
 import { env } from "@/lib/env"
 
 import { LoginForm } from "./login-form"
 
 export const metadata: Metadata = { title: "Sign in" }
 
-const ERRORS: Record<string, string> = {
-  forbidden: "This account is not allowed to use the gateway dashboard.",
+const MESSAGES: Record<string, { tone: "error" | "info"; text: string }> = {
+  forbidden: {
+    tone: "error",
+    text: "This account is not allowed to use the gateway dashboard. Ask the owner to add you.",
+  },
+  oauth: {
+    tone: "error",
+    text: "Google sign-in didn't complete. Please try again.",
+  },
+  link: {
+    tone: "error",
+    text: "That link is invalid or has expired. Request a new one.",
+  },
+  "password-reset": {
+    tone: "info",
+    text: "Password updated. Sign in with your new password.",
+  },
 }
 
 export default async function LoginPage({
@@ -26,8 +42,14 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>
 }) {
-  if (await getSessionMember()) redirect("/")
-  const { error } = await searchParams
+  const state = await getSessionState()
+  if (state.status !== "signed_out" && state.status !== "not_member") {
+    redirect(pathForState(state))
+  }
+  const [{ error }, settings] = await Promise.all([
+    searchParams,
+    getAuthSettings(),
+  ])
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
@@ -44,7 +66,8 @@ export default async function LoginPage({
           <LoginForm
             supabaseUrl={env.supabaseUrl()}
             supabaseKey={env.supabasePublishableKey()}
-            initialError={error ? (ERRORS[error] ?? null) : null}
+            googleEnabled={settings.google}
+            initialMessage={error ? (MESSAGES[error] ?? null) : null}
           />
         </CardContent>
         <CardFooter className="justify-center text-xs text-muted-foreground">

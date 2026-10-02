@@ -1,19 +1,18 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   BoxesIcon,
   ChevronsUpDownIcon,
   CpuIcon,
   FlaskConicalIcon,
-  KeyRoundIcon,
   LayoutDashboardIcon,
   LogOutIcon,
   RouteIcon,
   ScrollTextIcon,
   ServerIcon,
+  ShieldCheckIcon,
   UsersIcon,
   WaypointsIcon,
 } from "lucide-react"
@@ -40,7 +39,6 @@ import {
   SidebarRail,
 } from "@/components/animate-ui/components/radix/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ChangePasswordDialog } from "@/components/change-password-dialog"
 import type { SessionMember } from "@/lib/auth"
 import type { MemberRole } from "@/lib/db/types"
 import { signOut } from "@/app/login/actions"
@@ -128,7 +126,7 @@ export function AppSidebar({
   member: Pick<SessionMember, "email" | "name" | "avatarUrl" | "role">
 }) {
   const pathname = usePathname()
-  const [changingPassword, setChangingPassword] = useState(false)
+  const router = useRouter()
   const initials = (member.name ?? member.email).slice(0, 2).toUpperCase()
   const nav = NAV.map((group) => ({
     ...group,
@@ -220,9 +218,9 @@ export function AppSidebar({
                   {member.email}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => setChangingPassword(true)}>
-                  <KeyRoundIcon />
-                  Change password
+                <DropdownMenuItem onSelect={() => router.push("/account")}>
+                  <ShieldCheckIcon />
+                  Account &amp; security
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void signOut()}>
                   <LogOutIcon />
@@ -234,10 +232,6 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
-      <ChangePasswordDialog
-        open={changingPassword}
-        onOpenChange={setChangingPassword}
-      />
     </Sidebar>
   )
 }

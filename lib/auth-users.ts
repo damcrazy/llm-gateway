@@ -45,3 +45,14 @@ export async function upsertPasswordUser(
   )
   if (updateError) throw new Error(updateError.message)
 }
+
+/** Creates a confirmed account with no password (they sign in with Google). */
+export async function ensureUser(email: string): Promise<void> {
+  const { error } = await supabaseAdmin().auth.admin.createUser({
+    email,
+    email_confirm: true,
+  })
+  if (!error) return
+  if (await findAuthUserByEmail(email)) return
+  throw new Error(error.message)
+}

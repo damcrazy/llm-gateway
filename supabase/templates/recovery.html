@@ -1,0 +1,4 @@
+<h2>Reset your LLM Gateway password</h2>
+<p>Someone asked to reset the password for {{ .Email }}. If it was you, choose a new password:</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password">Choose a new password</a></p>
+<p>This link expires in an hour and works once. If you didn't ask for this, you can ignore this email.</p>

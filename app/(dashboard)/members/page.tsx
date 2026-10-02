@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { requireSuperadmin } from "@/lib/auth"
+import { requireSuperadmin, verifiedTotpFactors } from "@/lib/auth"
 import type { MemberRow } from "@/lib/db/types"
 import { formatUsd } from "@/lib/format"
 import { supabaseAdmin } from "@/lib/supabase/admin"
@@ -20,9 +20,11 @@ import { createClient } from "@/lib/supabase/server"
 
 import {
   AddMemberDialog,
+  CreateAccountButton,
   EditAccessButton,
   RemoveMemberButton,
   ResetPasswordButton,
+  ResetTwoFactorButton,
 } from "./member-controls"
 import { accessSummary } from "./shared"
 
@@ -65,6 +67,31 @@ export default async function MembersPage() {
     )
   )
 
+  // 2FA status: auth users by email, then each one's verified authenticators.
+  const authUsers = new Map<string, string>()
+  for (let page = 1; page <= 20; page++) {
+    const { data: usersPage } = await supabaseAdmin().auth.admin.listUsers({
+      page,
+      perPage: 100,
+    })
+    for (const user of usersPage?.users ?? []) {
+      if (user.email) authUsers.set(user.email.toLowerCase(), user.id)
+    }
+    if ((usersPage?.users.length ?? 0) < 100) break
+  }
+  // null: no account yet (they can't sign in until one is created).
+  const twoFactor = new Map<string, number | null>(
+    await Promise.all(
+      members.map(async (member) => {
+        const userId = authUsers.get(member.email)
+        const count = userId
+          ? (await verifiedTotpFactors(userId).catch(() => [])).length
+          : null
+        return [member.email, count] as const
+      })
+    )
+  )
+
   const options = {
     routes: ((routesResult.data ?? []) as { name: string }[]).map(
       (r) => r.name
@@ -91,9 +118,10 @@ export default async function MembersPage() {
                 <TableHead className="pl-6">Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Model access</TableHead>
+                <TableHead>2FA</TableHead>
                 <TableHead className="text-right">Spend this month</TableHead>
                 <TableHead className="text-right">Apps</TableHead>
-                <TableHead className="w-32 pr-6" />
+                <TableHead className="w-40 pr-6" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -133,6 +161,9 @@ export default async function MembersPage() {
                         member.allowed_models
                       )}
                     </TableCell>
+                    <TableCell>
+                      <TwoFactorBadge count={twoFactor.get(member.email)} />
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatUsd(spent)}
                       {member.role === "member" && (
@@ -158,7 +189,13 @@ export default async function MembersPage() {
                               monthly_budget_usd: budget,
                             }}
                           />
+                          {twoFactor.get(member.email) == null && (
+                            <CreateAccountButton email={member.email} />
+                          )}
                           <ResetPasswordButton email={member.email} />
+                          {(twoFactor.get(member.email) ?? 0) > 0 && (
+                            <ResetTwoFactorButton email={member.email} />
+                          )}
                           <RemoveMemberButton
                             email={member.email}
                             appCount={apps}
@@ -174,5 +211,13 @@ export default async function MembersPage() {
         </CardContent>
       </Card>
     </>
+  )
+}
+
+function TwoFactorBadge({ count }: { count: number | null | undefined }) {
+  if (count == null) return <Badge variant="outline">No account</Badge>
+  if (count === 0) return <Badge variant="outline">Not set up</Badge>
+  return (
+    <Badge variant="secondary">On{count > 1 && ` · ${count} devices`}</Badge>
   )
 }
