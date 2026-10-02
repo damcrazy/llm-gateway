@@ -36,21 +36,39 @@ export async function upsertPasswordUser(
 
   const existing = await findAuthUserByEmail(email)
   if (!existing) throw new Error(error.message)
-  const { error: updateError } = await db.auth.admin.updateUserById(
-    existing.id,
-    {
-      password,
-      email_confirm: true,
-    }
-  )
-  if (updateError) throw new Error(updateError.message)
+  await setUserPassword(existing.id, password, { email_confirm: true })
 }
 
-/** Creates a confirmed account with no password (they sign in with Google). */
+/**
+ * Sets an account's password and clears the "no password yet" flag that
+ * ensureUser sets (see public.user_has_password).
+ */
+export async function setUserPassword(
+  userId: string,
+  password: string,
+  extra: {
+    email_confirm?: boolean
+    app_metadata?: Record<string, unknown>
+  } = {}
+): Promise<void> {
+  const { error } = await supabaseAdmin().auth.admin.updateUserById(userId, {
+    password,
+    email_confirm: extra.email_confirm,
+    app_metadata: { password_unset: false, ...extra.app_metadata },
+  })
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Creates a confirmed account with no password (they sign in with Google).
+ * Supabase stores a random password nobody knows for such accounts, so they
+ * are flagged as having none until the person sets one.
+ */
 export async function ensureUser(email: string): Promise<void> {
   const { error } = await supabaseAdmin().auth.admin.createUser({
     email,
     email_confirm: true,
+    app_metadata: { password_unset: true },
   })
   if (!error) return
   if (await findAuthUserByEmail(email)) return

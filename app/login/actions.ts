@@ -6,8 +6,8 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { actionError, type ActionResult } from "@/lib/actions"
 import { getSessionState, pathForState, requireMember } from "@/lib/auth"
 import { env } from "@/lib/env"
+import { setUserPassword } from "@/lib/auth-users"
 import { passwordProblem } from "@/lib/password"
-import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 /**
@@ -24,7 +24,7 @@ export async function finishSignIn(): Promise<ActionResult> {
   await supabase.auth.signOut()
   return {
     ok: false,
-    error: "This account is not allowed to use the gateway dashboard.",
+    error: "This account no longer has access to the gateway.",
   }
 }
 
@@ -63,9 +63,10 @@ export async function changePassword(
   if (verifyError) return { ok: false, error: "Current password is incorrect" }
   await verifier.auth.signOut({ scope: "local" })
 
-  const { error } = await supabaseAdmin().auth.admin.updateUserById(me.id, {
-    password: newPassword,
-  })
-  if (error) return actionError(error)
+  try {
+    await setUserPassword(me.id, newPassword)
+  } catch (error) {
+    return actionError(error)
+  }
   return { ok: true, message: "Password updated" }
 }

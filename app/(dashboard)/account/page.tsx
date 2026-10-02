@@ -19,7 +19,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item"
-import { requireMember, verifiedTotpFactors } from "@/lib/auth"
+import { requireMember, userHasPassword, verifiedTotpFactors } from "@/lib/auth"
 import { env } from "@/lib/env"
 import { formatDateTime } from "@/lib/format"
 import { supabaseAdmin } from "@/lib/supabase/admin"
@@ -27,6 +27,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import {
   AddAuthenticatorButton,
   ChangePasswordButton,
+  SetPasswordButton,
   RemoveAuthenticatorButton,
 } from "./account-controls"
 
@@ -40,15 +41,15 @@ const ROLE_LABELS = {
 
 export default async function AccountPage() {
   const me = await requireMember()
-  const [factors, { data: userData }] = await Promise.all([
+  const [factors, { data: userData }, hasPassword] = await Promise.all([
     verifiedTotpFactors(me.id),
     supabaseAdmin().auth.admin.getUserById(me.id),
+    userHasPassword(me.id),
   ])
   const identities = userData.user?.identities ?? []
   const hasGoogle = identities.some(
     (identity) => identity.provider === "google"
   )
-  const hasEmail = identities.some((identity) => identity.provider === "email")
 
   return (
     <>
@@ -78,12 +79,14 @@ export default async function AccountPage() {
               <ItemContent>
                 <ItemTitle>Email and password</ItemTitle>
                 <ItemDescription>
-                  {hasEmail
+                  {hasPassword
                     ? "Forgot it? Use “Forgot password?” on the sign-in page."
-                    : "No password yet. Use “Forgot password?” on the sign-in page to set one."}
+                    : "No password yet: you sign in with Google. Set one to also sign in with your email."}
                 </ItemDescription>
               </ItemContent>
-              <ItemActions>{hasEmail && <ChangePasswordButton />}</ItemActions>
+              <ItemActions>
+                {hasPassword ? <ChangePasswordButton /> : <SetPasswordButton />}
+              </ItemActions>
             </Item>
             <Item variant="outline">
               <ItemMedia variant="icon">

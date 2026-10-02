@@ -10,7 +10,7 @@ import { describeNames, ENV_NAMES, readEnv } from "@/lib/env-names"
 // The gateway API (/v1/*) is excluded so request bodies are never buffered
 // here and API-key clients never see a redirect.
 
-const PUBLIC_PATHS = ["/login", "/auth/", "/forgot-password"]
+const PUBLIC_PATHS = ["/login", "/signup", "/auth/", "/forgot-password"]
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })

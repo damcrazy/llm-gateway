@@ -6,9 +6,9 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 /**
- * After a sign-in link or OAuth callback: keep the session only for people
- * listed in public.members. Anyone else is signed out and, if Supabase just
- * created an account for them, that account is removed.
+ * After an email link or OAuth callback: keep the session only for members.
+ * Confirmed accounts are enrolled automatically (enroll_confirmed_user
+ * trigger), so this only turns away accounts that were removed.
  */
 export async function keepOnlyMembers(user: User): Promise<boolean> {
   const email = user.email?.toLowerCase() ?? ""
@@ -21,6 +21,5 @@ export async function keepOnlyMembers(user: User): Promise<boolean> {
 
   const supabase = await createClient()
   await supabase.auth.signOut()
-  await supabaseAdmin().auth.admin.deleteUser(user.id)
   return false
 }

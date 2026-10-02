@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { KeyRoundIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import { CheckIcon, KeyRoundIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
@@ -21,6 +21,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -31,9 +32,19 @@ import {
   TooltipTrigger,
 } from "@/components/animate-ui/components/radix/tooltip"
 import { ChangePasswordDialog } from "@/components/change-password-dialog"
+import { PasswordInput } from "@/components/password-input"
 import { TotpEnroll } from "@/components/totp-enroll"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
+import { Spinner } from "@/components/ui/spinner"
+import { MIN_PASSWORD_LENGTH, passwordProblem } from "@/lib/password"
 
-import { removeAuthenticator } from "./actions"
+import { removeAuthenticator, setPassword } from "./actions"
 
 export function ChangePasswordButton() {
   const [open, setOpen] = useState(false)
@@ -45,6 +56,97 @@ export function ChangePasswordButton() {
       </Button>
       <ChangePasswordDialog open={open} onOpenChange={setOpen} />
     </>
+  )
+}
+
+/** For Google-only accounts: add a password to the same account. */
+export function SetPasswordButton() {
+  const [open, setOpen] = useState(false)
+  const [password, setPasswordValue] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+  const mismatch = confirm !== "" && confirm !== password
+
+  function onOpenChange(next: boolean) {
+    setOpen(next)
+    if (next) {
+      setPasswordValue("")
+      setConfirm("")
+      setError(null)
+    }
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault()
+    const problem = passwordProblem(password)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    if (mismatch) return
+    startTransition(async () => {
+      const result = await setPassword(password)
+      if (!result.ok) {
+        setError(result.error)
+        return
+      }
+      toast.success(result.message)
+      setOpen(false)
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <KeyRoundIcon />
+          Set a password
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <form onSubmit={submit} className="grid gap-4">
+          <DialogHeader>
+            <DialogTitle>Set a password</DialogTitle>
+            <DialogDescription>
+              Then you can sign in with your email and this password as well as
+              with Google. It&apos;s the same account either way.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field data-invalid={error ? true : undefined}>
+              <FieldLabel htmlFor="set-password">New password</FieldLabel>
+              <PasswordInput
+                id="set-password"
+                value={password}
+                onChange={setPasswordValue}
+              />
+              <FieldDescription>
+                At least {MIN_PASSWORD_LENGTH} characters.
+              </FieldDescription>
+            </Field>
+            <Field data-invalid={mismatch || undefined}>
+              <FieldLabel htmlFor="set-password-confirm">
+                Confirm password
+              </FieldLabel>
+              <PasswordInput
+                id="set-password-confirm"
+                value={confirm}
+                onChange={setConfirm}
+              />
+              {mismatch && <FieldError>Passwords don&apos;t match</FieldError>}
+            </Field>
+            {error && <FieldError>{error}</FieldError>}
+          </FieldGroup>
+          <DialogFooter>
+            <Button type="submit" disabled={pending || mismatch}>
+              {pending ? <Spinner /> : <CheckIcon />}
+              Save password
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

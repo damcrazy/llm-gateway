@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { WaypointsIcon } from "lucide-react"
+import { UserPlusIcon } from "lucide-react"
 
 import {
   Card,
@@ -15,69 +15,44 @@ import { getSessionState, pathForState } from "@/lib/auth"
 import { getAuthSettings } from "@/lib/auth-settings"
 import { env } from "@/lib/env"
 
-import { LoginForm } from "./login-form"
+import { SignupForm } from "./signup-form"
 
-export const metadata: Metadata = { title: "Sign in" }
+export const metadata: Metadata = { title: "Create an account" }
 
-const MESSAGES: Record<string, { tone: "error" | "info"; text: string }> = {
-  forbidden: {
-    tone: "error",
-    text: "This account no longer has access to the gateway. Ask the owner if you think that's a mistake.",
-  },
-  oauth: {
-    tone: "error",
-    text: "Google sign-in didn't complete. Please try again.",
-  },
-  link: {
-    tone: "error",
-    text: "That link is invalid or has expired. Request a new one.",
-  },
-  "password-reset": {
-    tone: "info",
-    text: "Password updated. Sign in with your new password.",
-  },
-}
-
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>
-}) {
+export default async function SignupPage() {
   const state = await getSessionState()
   if (state.status !== "signed_out" && state.status !== "not_member") {
     redirect(pathForState(state))
   }
-  const [{ error }, settings] = await Promise.all([
-    searchParams,
-    getAuthSettings(),
-  ])
+  const settings = await getAuthSettings()
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <div className="mx-auto mb-2 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <WaypointsIcon className="size-5" />
+            <UserPlusIcon className="size-5" />
           </div>
-          <CardTitle className="text-xl">LLM Gateway</CardTitle>
-          <CardDescription>Sign in to manage your gateway.</CardDescription>
+          <CardTitle className="text-xl">Create an account</CardTitle>
+          <CardDescription>
+            Create apps and API keys for free models. The owner can give you
+            more.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* The URL and publishable key are public by design; RLS protects the data. */}
-          <LoginForm
+          <SignupForm
             supabaseUrl={env.supabaseUrl()}
             supabaseKey={env.supabasePublishableKey()}
             googleEnabled={settings.google}
-            initialMessage={error ? (MESSAGES[error] ?? null) : null}
           />
         </CardContent>
         <CardFooter className="justify-center gap-1 text-sm text-muted-foreground">
-          New here?
+          Already have an account?
           <Link
-            href="/signup"
+            href="/login"
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
-            Create an account
+            Sign in
           </Link>
         </CardFooter>
       </Card>

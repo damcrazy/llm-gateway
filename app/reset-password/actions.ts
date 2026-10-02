@@ -4,8 +4,8 @@ import { redirect } from "next/navigation"
 
 import { actionError, type ActionResult } from "@/lib/actions"
 import { getSessionState } from "@/lib/auth"
+import { setUserPassword } from "@/lib/auth-users"
 import { passwordProblem } from "@/lib/password"
-import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 import { canResetPassword } from "./policy"
@@ -25,14 +25,13 @@ export async function completePasswordReset(
 
   // Recorded so the lost-authenticator email fallback stays off for a while:
   // otherwise access to the inbox alone would replace both factors.
-  const { error } = await supabaseAdmin().auth.admin.updateUserById(
-    state.member.id,
-    {
-      password,
+  try {
+    await setUserPassword(state.member.id, password, {
       app_metadata: { password_reset_at: new Date().toISOString() },
-    }
-  )
-  if (error) return actionError(error)
+    })
+  } catch (error) {
+    return actionError(error)
+  }
 
   // Sign out everywhere: sign in again with the new password (and 2FA).
   const supabase = await createClient()

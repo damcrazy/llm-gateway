@@ -6,8 +6,8 @@ import { keepOnlyMembers } from "@/lib/auth-session"
 import { safeNextPath } from "@/lib/safe-next"
 import { createClient } from "@/lib/supabase/server"
 
-// Only password-reset links; magic-link sign-in isn't offered.
-const ALLOWED_TYPES = new Set<EmailOtpType>(["recovery"])
+// Sign-up confirmations and password resets; magic-link sign-in isn't offered.
+const ALLOWED_TYPES = new Set<EmailOtpType>(["email", "signup", "recovery"])
 
 /**
  * Email links built from the templates in supabase/templates

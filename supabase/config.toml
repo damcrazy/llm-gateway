@@ -166,14 +166,15 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-# Nobody can sign up; the superadmin creates accounts from the Admins page.
-enable_signup = false
+# Anyone can sign up; confirmed accounts become members with free models only
+# (see the enroll_confirmed_user trigger).
+enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+minimum_password_length = 12
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
 password_requirements = ""
@@ -201,13 +202,14 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Enables the email/password provider (sign-ups are still off globally above).
+# Enables the email/password provider.
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# Required: an account only becomes a member once its email is confirmed.
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
@@ -229,8 +231,12 @@ otp_expiry = 3600
 
 # Uncomment to customize email template
 # Same templates as the hosted project's Authentication -> Emails -> Templates.
-# recovery: link works across devices (/auth/confirm with a token hash).
+# confirmation, recovery: links work across devices (/auth/confirm with a token hash).
 # magic_link: shows the 6-digit code used to recover from a lost authenticator.
+[auth.email.template.confirmation]
+subject = "Confirm your LLM Gateway account"
+content_path = "./supabase/templates/confirmation.html"
+
 [auth.email.template.recovery]
 subject = "Reset your LLM Gateway password"
 content_path = "./supabase/templates/recovery.html"

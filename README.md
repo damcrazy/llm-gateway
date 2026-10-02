@@ -49,11 +49,16 @@ Azure OpenAI · Anthropic · AWS Bedrock · Google Vertex · Google AI Studio
 1. Create a project and link it: `supabase link --project-ref <ref>`.
 2. Apply the schema: `supabase db push`. This runs the migrations in `supabase/migrations/`, including the admin allowlist.
    - **Log retention:** `pg_cron` jobs delete request logs after 30 days and payloads after 7 days.
-3. **Authentication → Sign In / Providers:** keep the **Email** provider on and turn **off** "Allow new users to sign up". Nobody can register themselves; the superadmin creates accounts from the Members page (service role), which that setting doesn't block.
-4. **Create the superadmin account:** Authentication → Users → Add user, with the superadmin email, a strong password and "Auto confirm" ticked. After that, add other people from the dashboard.
-5. *Optional, a second safety net:* **Authentication → Hooks:** add a *Before User Created* hook of type Postgres function, pointing at `public.hook_before_user_created`. It rejects any email that isn't in `public.members` before an account is created.
+3. **Authentication → Sign In / Providers:** keep the **Email** provider on, **"Allow new users to sign up" on** and **"Confirm email" on**. Under **Email**, set the minimum password length to 12. Anyone can create an account; it becomes a normal member (free models only) once its email is confirmed.
+4. **Create the superadmin account:** sign up at `/signup` with the `SUPERADMIN_EMAIL` address. That email is always superadmin. Or use Authentication → Users → Add user with "Auto confirm" ticked.
+5. *Not needed any more:* the *Before User Created* hook (`public.hook_before_user_created`) now lets everyone through, so it's harmless if it's still configured.
 
 ### 2. Sign-in, 2FA and email
+
+Anyone can **sign up** at `/signup` with Google or email and password, and becomes a normal member with free models only. One email is always one account:
+- Signing in with Google attaches to the existing account with that email.
+- Signing up again with a used email shows "This email already has an account".
+- A Google user who wants a password uses **Forgot password?** or **Set a password** on Account & security. Both put the password on the same account.
 
 People sign in with **Google** or **email and password**. Either way, **two-factor authentication is required for everyone**: the first sign-in goes straight to setting up an authenticator app (Google Authenticator, 1Password, Authy…). Until a code is verified, the dashboard redirects to 2FA and RLS returns no rows.
 
@@ -67,14 +72,16 @@ People sign in with **Google** or **email and password**. Either way, **two-fact
 **Google** (Authentication → Sign In / Providers → Google):
 1. In Google Cloud Console, create an OAuth client of type *Web application*. Add `https://<project-ref>.supabase.co/auth/v1/callback` as an authorized redirect URI.
 2. Paste its client ID and secret into Supabase and enable the provider. The "Continue with Google" button appears on its own once it's on.
-3. With sign-ups off, Google only works for people who already have an account. Signing in with Google links it to the account with the same email. People added on Members always get one; for people listed earlier, use **Create account**.
+3. A first Google sign-in creates the account, or links it to the existing account with the same email.
 
 **URLs** (Authentication → URL Configuration):
 - **Site URL:** your dashboard, e.g. `https://gateway.example.com`.
 - **Redirect URLs:** `https://gateway.example.com/**`, and `http://localhost:3000/**` if you develop against this project.
 
 **Email templates** (Authentication → Emails → Templates). Paste the files from `supabase/templates/`:
-- **Reset password** → `recovery.html`. Its link goes to `/auth/confirm`, so it works when the email is opened on a different device.
+- **Confirm signup** → `confirmation.html`.
+- **Reset password** → `recovery.html`.
+- Both links go to `/auth/confirm`, so they work when the email is opened on a different device.
 - **Magic link** → `magic_link.html`. It shows the 6-digit code used to recover a lost authenticator.
 
 **SMTP** (Authentication → Emails → SMTP Settings): Supabase's built-in sender only delivers to your Supabase team's own addresses, a couple of emails an hour. Set up custom SMTP (Resend, Postmark, SES…) before relying on resets or recovery codes.
@@ -121,7 +128,7 @@ cp .env.example .env.local   # use the keys printed by `supabase start`
 bun dev
 ```
 
-Local sign-ups are disabled as well. Create your local account with the admin API, for example from `supabase start`'s Studio (if you don't exclude it), or with `supabase.auth.admin.createUser({ email, password, email_confirm: true })` and the local secret key.
+Sign up locally at http://localhost:3000/signup. The confirmation email lands in Mailpit.
 
 Emails (reset links, recovery codes) never leave your machine locally: open Mailpit at http://127.0.0.1:54324. For local Google sign-in, set `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` and `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET`, then turn on `[auth.external.google]` in `supabase/config.toml`.
 
@@ -153,7 +160,11 @@ Response headers `x-gateway-model`, `x-gateway-provider`, `x-gateway-attempts` a
 
 ## People and roles
 
-Manage people on **Members** (superadmin only).
+Anyone who signs up becomes a **Member** with free models only. On **Members** (superadmin only), you can:
+- promote someone to admin;
+- widen their model access;
+- set a budget;
+- add people yourself with custom access before they sign up.
 
 | Role | Can do |
 | --- | --- |
@@ -175,13 +186,10 @@ Members can only run as their own apps. Admins can also pick **No app** for unre
 
 ## Security model
 
-- **Dashboard access:** Google or email and password, with public sign-ups disabled, plus the `public.members` allowlist. It's enforced in three places:
-  1. a check on every dashboard request and server action;
-  2. RLS on every table;
-  3. optionally, the auth hook before an account is created.
+- **Dashboard access:** Google or email and password. Sign-up is open, but an account only becomes a member once its email is confirmed, and new members start with free models only. Roles and access are checked on every dashboard request and server action, and by RLS on every table.
 - **Two-factor authentication** is required for everyone, on top of either sign-in method. Pages and server actions only accept sessions that verified an authenticator code (`aal2`), and a restrictive RLS policy on every table does the same for direct API calls.
 - **Brute force:** sign-in runs from the browser straight to Supabase Auth, so its per-IP rate limits apply to whoever is trying, not to the gateway server.
-- **Removing someone** deletes their account and takes effect on their next request. Passwords are at least 12 characters.
+- **Removing someone** deletes their account and takes effect on their next request. Because sign-up is open, they could create a new account later, starting again as a member with free models only. Passwords are at least 12 characters.
 - **Email links and redirects:** reset links work once, open a session that can only set a new password for 15 minutes, and still need 2FA to reach the dashboard. Post-sign-in redirects only accept same-site paths.
 - **Provider credentials** are AES-256-GCM encrypted in `provider_secrets`, a table with no RLS policies, so only the service role can read it. They never reach the browser.
 - **App API keys** are stored as SHA-256 hashes and shown once. Each app can have a model allowlist, a requests-per-minute limit, a monthly budget and payload logging (off by default).

@@ -59,6 +59,15 @@ export async function verifiedTotpFactors(userId: string) {
   )
 }
 
+/** Whether the account has a password (Google-only accounts don't). */
+export async function userHasPassword(userId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin().rpc("user_has_password", {
+    p_user_id: userId,
+  })
+  if (error) throw new Error(error.message)
+  return data === true
+}
+
 /**
  * The signed-in person and how far they are through sign-in. Membership is
  * checked on every request, so removing someone takes effect immediately.

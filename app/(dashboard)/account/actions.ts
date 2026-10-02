@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
-import { requireMember, verifiedTotpFactors } from "@/lib/auth"
+import { requireMember, userHasPassword, verifiedTotpFactors } from "@/lib/auth"
+import { setUserPassword } from "@/lib/auth-users"
+import { passwordProblem } from "@/lib/password"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
 /** Removes one of your authenticators; 2FA is required, so never the last. */
@@ -37,4 +39,31 @@ export async function removeAuthenticator(
   }
   revalidatePath("/account")
   return { ok: true, message: "Authenticator removed" }
+}
+
+/**
+ * Adds a password to an account that only signs in with Google, so the same
+ * account can also sign in with email and password. Changing an existing
+ * password goes through changePassword, which asks for the current one.
+ */
+export async function setPassword(password: string): Promise<ActionResult> {
+  const me = await requireMember()
+  const problem = passwordProblem(password)
+  if (problem) return { ok: false, error: problem }
+  try {
+    if (await userHasPassword(me.id)) {
+      return {
+        ok: false,
+        error: "You already have a password. Use Change password instead.",
+      }
+    }
+    await setUserPassword(me.id, password)
+  } catch (error) {
+    return actionError(error)
+  }
+  revalidatePath("/account")
+  return {
+    ok: true,
+    message: "Password set. You can now sign in with your email too.",
+  }
 }

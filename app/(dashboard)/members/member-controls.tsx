@@ -478,7 +478,9 @@ export function RemoveMemberButton({
             Their account is deleted and any open session stops working.
             {appCount > 0 &&
               ` Their ${appCount} app${appCount === 1 ? "" : "s"} and every API key in ${appCount === 1 ? "it" : "them"} are deleted too, so those integrations stop working immediately.`}{" "}
-            Past usage stays in the logs.
+            Past usage stays in the logs. Sign-up is open, so they could create
+            a new account later, starting again as a member with free models
+            only.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
