@@ -105,7 +105,7 @@ Copy `.env.example`. Everything is read at runtime (there are no `NEXT_PUBLIC_*`
 
 **Vercel (Hobby is fine to start):**
 1. Import the repo and set the env vars.
-2. Put the functions in the **same region as your Supabase project** (Project Settings → Functions). This is the biggest latency win.
+2. Run the functions in the **same region as your Supabase project**. It's the biggest latency win: each database query is a round trip, and a page makes several. `vercel.json` sets `"regions": ["sin1"]` (Singapore) to match this project's Supabase (`ap-southeast-1`); change it if your database lives elsewhere.
 3. Limits on Hobby:
    - Streams are capped at 300s. Raise `maxDuration` in `app/v1/*/route.ts` on Pro (up to 800s).
    - Request bodies are capped at 4.5 MB.
