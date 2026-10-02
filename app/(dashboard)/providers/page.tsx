@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { requireAdmin } from "@/lib/auth"
+import { requireMember } from "@/lib/auth"
 import type { ProviderRow } from "@/lib/db/types"
 import { loadCredentialHints } from "@/lib/providers/secrets"
 import { createClient } from "@/lib/supabase/server"
@@ -34,15 +34,30 @@ import { describeEndpoint, providerKindLabel } from "./shared"
 export const metadata: Metadata = { title: "Providers" }
 
 export default async function ProvidersPage() {
-  await requireAdmin()
+  const me = await requireMember()
   const supabase = await createClient()
+  // RLS: admins read every provider, members only their own.
   const [{ data: providerData }, { data: modelData }, hints] =
     await Promise.all([
       supabase.from("providers").select("*").order("created_at"),
       supabase.from("models").select("provider_id, enabled"),
       loadCredentialHints(),
     ])
-  const providers = (providerData ?? []) as ProviderRow[]
+  const all = (providerData ?? []) as ProviderRow[]
+  // Admins manage the shared providers; members manage their own.
+  const providers = all.filter((provider) =>
+    me.isAdmin
+      ? provider.owner_email === null
+      : provider.owner_email === me.email
+  )
+  // Slugs are global; prefix members' own with their name to avoid clashes.
+  const slugPrefix = me.email
+    .split("@")[0]!
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 20)
+  const membersProviders = me.isAdmin
+    ? all.filter((provider) => provider.owner_email !== null)
+    : []
 
   const counts = new Map<string, { total: number; enabled: number }>()
   for (const row of (modelData ?? []) as {
@@ -58,9 +73,17 @@ export default async function ProvidersPage() {
   return (
     <>
       <PageHeader
-        title="Providers"
-        description="Upstream APIs the gateway calls. Credentials are encrypted at rest and never leave the server."
-        actions={providers.length > 0 && <AddProviderDialog />}
+        title={me.isAdmin ? "Providers" : "Your providers"}
+        description={
+          me.isAdmin
+            ? "Shared upstream APIs: every member can use their models, within the access you give them. Credentials are encrypted at rest and never leave the server."
+            : "Connect your own API keys. Their models can only be used by your apps, and you pay the provider directly. Credentials are encrypted at rest and never leave the server."
+        }
+        actions={
+          providers.length > 0 && (
+            <AddProviderDialog own={!me.isAdmin} slugPrefix={slugPrefix} />
+          )
+        }
       />
 
       {providers.length === 0 ? (
@@ -73,12 +96,13 @@ export default async function ProvidersPage() {
                 </EmptyMedia>
                 <EmptyTitle>No providers yet</EmptyTitle>
                 <EmptyDescription>
-                  Connect OpenAI, Anthropic, Bedrock, Vertex, a local Ollama or
-                  anything OpenAI-compatible, then add its models.
+                  {me.isAdmin
+                    ? "Connect OpenAI, Anthropic, Bedrock, Vertex, a local Ollama or anything OpenAI-compatible, then add its models."
+                    : "Bring your own OpenAI, Anthropic, Gemini, OpenRouter… key. Only your apps can use its models, and they're not limited by the free-models plan."}
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
-                <AddProviderDialog />
+                <AddProviderDialog own={!me.isAdmin} slugPrefix={slugPrefix} />
               </EmptyContent>
             </Empty>
           </CardContent>
@@ -181,6 +205,56 @@ export default async function ProvidersPage() {
                     </TableRow>
                   )
                 })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {membersProviders.length > 0 && (
+        <Card className="py-0">
+          <CardContent className="px-0">
+            <div className="px-6 pt-5 pb-2">
+              <h2 className="font-medium">Members&apos; own providers</h2>
+              <p className="text-sm text-muted-foreground">
+                Connected by members with their own keys. Only the owner&apos;s
+                apps can use them; you can&apos;t open or edit them here.
+              </p>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-6">Provider</TableHead>
+                  <TableHead>Owner</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="pr-6 text-right">Models</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {membersProviders.map((provider) => (
+                  <TableRow key={provider.id}>
+                    <TableCell className="pl-6">
+                      <div className="font-medium">{provider.name}</div>
+                      <div className="font-mono text-xs text-muted-foreground">
+                        {provider.slug}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {provider.owner_email}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {
+                          providerKindLabel(provider.type, provider.config)
+                            .typeLabel
+                        }
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="pr-6 text-right tabular-nums">
+                      {counts.get(provider.id)?.total ?? 0}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </CardContent>

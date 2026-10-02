@@ -11,6 +11,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 
 import { listOpenAIModels } from "./adapters/openai"
 import type { ProviderRuntime } from "./config"
+import { fetchFor } from "./provider-fetch"
 import { upstreamErrorFromResponse } from "./errors"
 import { lookupMetadata, type ModelMetadata } from "./metadata"
 
@@ -46,6 +47,7 @@ async function loadProvider(providerId: string): Promise<ProviderRuntime> {
     type: row.type,
     config: row.config ?? {},
     enabled: row.enabled,
+    ownerEmail: row.owner_email ?? null,
     credentials: await loadProviderCredentials(row.id),
   }
 }
@@ -176,7 +178,7 @@ async function listAnthropic(provider: ProviderRuntime) {
   const base = (
     provider.config.baseUrl || "https://api.anthropic.com/v1"
   ).replace(/\/+$/, "")
-  const response = await fetch(`${base}/models?limit=1000`, {
+  const response = await fetchFor(provider)(`${base}/models?limit=1000`, {
     headers: {
       "x-api-key": provider.credentials.apiKey ?? "",
       "anthropic-version": "2023-06-01",
@@ -199,7 +201,7 @@ async function listGoogle(provider: ProviderRuntime) {
     provider.config.baseUrl ||
     "https://generativelanguage.googleapis.com/v1beta"
   ).replace(/\/+$/, "")
-  const response = await fetch(`${base}/models?pageSize=1000`, {
+  const response = await fetchFor(provider)(`${base}/models?pageSize=1000`, {
     headers: { "x-goog-api-key": provider.credentials.apiKey ?? "" },
     signal: AbortSignal.timeout(20_000),
   })

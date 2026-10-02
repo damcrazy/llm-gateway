@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
-import { accessPolicy, describePolicy, modelPermitted } from "@/lib/access"
+import { accessPolicy, canUseModel, describePolicy } from "@/lib/access"
 import { requireMember, type SessionMember } from "@/lib/auth"
 import { generateApiKey } from "@/lib/crypto"
 import type { MemberRow, ModelRow } from "@/lib/db/types"
@@ -162,7 +162,7 @@ type OwnerAccess = Pick<MemberRow, "role" | "model_access" | "allowed_models">
 type PricedModel = Pick<
   ModelRow,
   "id" | "slug" | "input_price_per_mtok" | "output_price_per_mtok"
->
+> & { providers: { owner_email: string | null } | null }
 
 const bucketsSchema = z
   .object({
@@ -236,13 +236,19 @@ export async function saveAppBuckets(
       modelIds.length
         ? db
             .from("models")
-            .select("id, slug, input_price_per_mtok, output_price_per_mtok")
+            .select(
+              "id, slug, input_price_per_mtok, output_price_per_mtok, providers(owner_email)"
+            )
             .in("id", modelIds)
         : Promise.resolve({ data: [], error: null }),
     ])
   if (modelsError) return actionError(modelsError)
-  const owner = (app as { members: OwnerAccess | null } | null)?.members
-  if (!owner) return { ok: false, error: "Unknown app" }
+  const appRow = app as {
+    owner_email: string
+    members: OwnerAccess | null
+  } | null
+  const owner = appRow?.members
+  if (!appRow || !owner) return { ok: false, error: "Unknown app" }
   const policy = accessPolicy(owner)
   const found = new Map(
     ((models ?? []) as PricedModel[]).map((model) => [model.id, model])
@@ -251,7 +257,10 @@ export async function saveAppBuckets(
     const model = found.get(modelId)
     if (!model)
       return { ok: false, error: "One of the models no longer exists" }
-    if (!modelPermitted(policy, model)) {
+    const providerOwner = model.providers?.owner_email ?? null
+    if (providerOwner !== null && providerOwner !== appRow.owner_email)
+      return { ok: false, error: "One of the models no longer exists" }
+    if (!canUseModel(policy, model, providerOwner, appRow.owner_email)) {
       return {
         ok: false,
         error: `${model.slug} isn't available to this app's owner (${describePolicy(policy)})`,

@@ -9,6 +9,7 @@ import {
   PriceTierFilter,
   type PriceTierFilterValue,
 } from "@/components/price-tier-filter"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   InputGroup,
@@ -30,6 +31,8 @@ import { CapabilityBadges } from "./model-controls"
 import { formatTokens } from "./shared"
 
 export interface AvailableModel {
+  /** From one of the member's own providers. */
+  own: boolean
   slug: string
   displayName: string | null
   kind: "chat" | "embedding"
@@ -100,6 +103,11 @@ export function AvailableModelsTable({ models }: { models: AvailableModel[] }) {
                       <span className="font-mono text-sm font-medium">
                         {model.slug}
                       </span>
+                      {model.own && (
+                        <Badge variant="secondary" className="font-normal">
+                          Your provider
+                        </Badge>
+                      )}
                       <CopyButton
                         content={model.slug}
                         variant="ghost"

@@ -175,6 +175,11 @@ export function ModelLibrary({
                     <div className="flex items-center gap-1.5">
                       <StatusDot model={model} />
                       <span className="font-medium">{model.name}</span>
+                      {model.own && (
+                        <Badge variant="secondary" className="font-normal">
+                          Your provider
+                        </Badge>
+                      )}
                       {model.kind === "embedding" && (
                         <Badge variant="outline" className="font-normal">
                           embedding

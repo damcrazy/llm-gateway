@@ -20,6 +20,7 @@ export function provider(
     type: "openai_compatible",
     config: { baseUrl: "http://upstream.test/v1" },
     enabled: true,
+    ownerEmail: null,
     credentials: { apiKey: "sk-test" },
     ...overrides,
   }

@@ -45,7 +45,13 @@ export default async function MembersPage() {
       supabase.from("members").select("*").order("created_at"),
       supabase.from("apps").select("owner_email"),
       supabase.from("routes").select("name").eq("enabled", true).order("name"),
-      supabase.from("models").select("slug").eq("enabled", true).order("slug"),
+      // Allow-lists govern shared providers only; members' own are theirs.
+      supabase
+        .from("models")
+        .select("slug, providers!inner(owner_email)")
+        .is("providers.owner_email", null)
+        .eq("enabled", true)
+        .order("slug"),
     ])
   const members = (membersResult.data ?? []) as MemberRow[]
 

@@ -15,7 +15,11 @@ type ProviderSummary = Pick<
  * read through the RLS-gated session client.
  */
 export async function loadModelList(
-  options: { providerId?: string } = {}
+  options: {
+    providerId?: string
+    /** Only shared providers (the admin Models page). */
+    sharedOnly?: boolean
+  } = {}
 ): Promise<{
   models: ModelListItem[]
   providers: ProviderSummary[]
@@ -32,6 +36,7 @@ export async function loadModelList(
     .order("name")
   if (options.providerId)
     providerQuery = providerQuery.eq("id", options.providerId)
+  if (options.sharedOnly) providerQuery = providerQuery.is("owner_email", null)
 
   const [modelsResult, providersResult, healthResult] = await Promise.all([
     modelQuery,

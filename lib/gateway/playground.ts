@@ -47,13 +47,15 @@ export interface PlaygroundOptions {
 
 /** Chat buckets, routes and models the app (or, with no app, an admin) can call. */
 export async function playgroundOptions(
-  context: AuthContext | null
+  context: AuthContext | null,
+  runnerEmail?: string
 ): Promise<PlaygroundOptions> {
   const snapshot = await getSnapshot()
   const available = listAvailableModels(
     snapshot,
     context?.app ?? null,
-    context?.owner.policy
+    context?.owner.policy,
+    privateOwnerFor(context, runnerEmail)
   ).filter((entry) => entry.kind === "chat")
 
   const buckets: PlaygroundOptions["buckets"] = []
@@ -112,6 +114,18 @@ export interface PlaygroundResult {
   latencyMs: number
 }
 
+/**
+ * A member's private providers are theirs alone: running someone else's app
+ * (as an admin) can't spend them.
+ */
+function privateOwnerFor(
+  context: AuthContext | null,
+  runnerEmail: string | undefined
+): string | null {
+  const owner = context?.app.owner_email ?? null
+  return owner && owner === runnerEmail ? owner : null
+}
+
 /** Runs a chat request through the full gateway pipeline (routing, fallback, logging). */
 export async function runPlayground(
   input: PlaygroundRequest
@@ -162,6 +176,7 @@ export async function runPlayground(
       request,
       app: context?.app ?? null,
       policy: context?.owner.policy,
+      privateOwner: privateOwnerFor(context, input.ownerEmail),
       signal: AbortSignal.timeout(300_000),
       recorder,
     })

@@ -25,6 +25,7 @@ import type {
 } from "@ai-sdk/provider"
 
 import type { ProviderRuntime } from "../config"
+import { fetchOption } from "../provider-fetch"
 import { UpstreamError, toUpstreamError } from "../errors"
 import type {
   CacheControl,
@@ -62,7 +63,12 @@ function factoryFor(provider: ProviderRuntime): Factory {
   if (provider.credentialError) throw configError(provider.credentialError)
   const fingerprint = createHash("sha256")
     .update(
-      JSON.stringify([provider.type, provider.config, provider.credentials])
+      JSON.stringify([
+        provider.type,
+        provider.config,
+        provider.credentials,
+        provider.ownerEmail,
+      ])
     )
     .digest("hex")
   const cached = factories.get(provider.id)
@@ -83,6 +89,7 @@ function createFactory(provider: ProviderRuntime): Factory {
         apiKey: credentials.apiKey,
         baseURL: config.baseUrl || undefined,
         headers: config.headers,
+        ...fetchOption(provider),
       })
       return { language: (id) => anthropic(id) }
     }
@@ -96,6 +103,7 @@ function createFactory(provider: ProviderRuntime): Factory {
         )
       }
       const bedrock = createAmazonBedrock({
+        ...fetchOption(provider),
         region: config.region,
         ...(credentials.apiKey
           ? { apiKey: credentials.apiKey }
@@ -135,12 +143,14 @@ function createFactory(provider: ProviderRuntime): Factory {
         ? { googleAuthOptions: { credentials: serviceAccount } }
         : {}
       const vertex = createGoogleVertex({
+        ...fetchOption(provider),
         project: config.project,
         location: config.location,
         ...(serviceAccount ? auth : { apiKey: credentials.apiKey }),
       })
       const vertexAnthropic = serviceAccount
         ? createVertexAnthropic({
+            ...fetchOption(provider),
             project: config.project,
             location: config.location,
             ...auth,
@@ -164,6 +174,7 @@ function createFactory(provider: ProviderRuntime): Factory {
       const google = createGoogle({
         apiKey: credentials.apiKey,
         baseURL: config.baseUrl || undefined,
+        ...fetchOption(provider),
       })
       return {
         language: (id) => google(id),

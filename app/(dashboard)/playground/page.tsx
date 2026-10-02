@@ -86,7 +86,7 @@ export default async function PlaygroundPage({
         ? null
         : apps[0].id
   const context = initialAppId ? await loadAppContext(initialAppId) : null
-  const options = await playgroundOptions(context)
+  const options = await playgroundOptions(context, me.email)
   const names = [
     ...options.routes.map((route) => route.name),
     ...options.modelGroups.flatMap((group) =>

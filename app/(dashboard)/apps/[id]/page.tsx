@@ -33,7 +33,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { accessPolicy, describePolicy, modelPermitted } from "@/lib/access"
+import { accessPolicy, canUseModel, describePolicy } from "@/lib/access"
 import { getOrigin, requireMember } from "@/lib/auth"
 import type {
   AppBucketRow,
@@ -147,7 +147,7 @@ export default async function AppPage({ params, searchParams }: Props) {
       .from("model_health")
       .select("model_id, cooldown_until, consecutive_failures"),
     // Members can't read providers; only names and on/off state are needed.
-    supabaseAdmin().from("providers").select("id, name, enabled"),
+    supabaseAdmin().from("providers").select("id, name, enabled, owner_email"),
     getOrigin(),
   ])
 
@@ -201,6 +201,7 @@ export default async function AppPage({ params, searchParams }: Props) {
       id: string
       name: string
       enabled: boolean
+      owner_email: string | null
     }[],
     health: (healthResult.data ?? []) as Pick<
       ModelHealthRow,
@@ -362,7 +363,12 @@ function buildBucketsData({
   app,
 }: {
   models: PageModel[]
-  providers: { id: string; name: string; enabled: boolean }[]
+  providers: {
+    id: string
+    name: string
+    enabled: boolean
+    owner_email: string | null
+  }[]
   health: Pick<ModelHealthRow, "model_id" | "cooldown_until">[]
   usage: UsageBreakdownRow[]
   policy: ReturnType<typeof accessPolicy>
@@ -381,9 +387,15 @@ function buildBucketsData({
   const now = Date.now()
 
   const addable: string[] = []
-  const bucketModels: BucketModel[] = models.map((model) => {
+  // Another member's private provider: those models don't exist for this app.
+  const visible = models.filter((model) => {
+    const owner = providerById.get(model.provider_id)?.owner_email ?? null
+    return owner === null || owner === app.owner_email
+  })
+  const bucketModels: BucketModel[] = visible.map((model) => {
     const provider = providerById.get(model.provider_id)
-    const permitted = modelPermitted(policy, model)
+    const ownerEmail = provider?.owner_email ?? null
+    const permitted = canUseModel(policy, model, ownerEmail, app.owner_email)
     const cooldownUntil = cooldownById.get(model.id) ?? 0
     let status: ModelStatus = { kind: "ok" }
     if (!model.enabled) {
@@ -410,6 +422,7 @@ function buildBucketsData({
       slug: model.slug,
       name: model.display_name || model.model_id,
       provider: provider?.name ?? "Unknown provider",
+      own: ownerEmail !== null,
       kind: model.kind,
       capabilities: model.capabilities ?? [],
       contextWindow: model.context_window,

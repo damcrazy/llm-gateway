@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
-import { requireAdmin } from "@/lib/auth"
+import { requireMember } from "@/lib/auth"
+import {
+  requireModelAccess,
+  requireModelsAccess,
+  requireProviderAccess,
+} from "@/lib/provider-access"
 import { invalidateGatewayConfig } from "@/lib/gateway/config"
 import {
   suggestModelMetadata,
@@ -46,9 +51,12 @@ export async function createModel(
   providerId: string,
   input: NewModelInput
 ): Promise<ActionResult<{ id: string }>> {
-  await requireAdmin()
-  if (!idSchema.safeParse(providerId).success)
+  if (!idSchema.safeParse(providerId).success) {
+    await requireMember()
     return { ok: false, error: "Unknown provider" }
+  }
+  const access = await requireProviderAccess(providerId)
+  if (!access.ok) return access
   const parsed = newModelSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) }
 
@@ -88,9 +96,12 @@ export async function updateModel(
   id: string,
   input: ModelFieldsInput
 ): Promise<ActionResult> {
-  await requireAdmin()
-  if (!idSchema.safeParse(id).success)
+  if (!idSchema.safeParse(id).success) {
+    await requireMember()
     return { ok: false, error: "Unknown model" }
+  }
+  const access = await requireModelAccess(id)
+  if (!access.ok) return access
   const parsed = modelFieldsSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) }
 
@@ -111,9 +122,12 @@ export async function setModelEnabled(
   id: string,
   enabled: boolean
 ): Promise<ActionResult> {
-  await requireAdmin()
-  if (!idSchema.safeParse(id).success)
+  if (!idSchema.safeParse(id).success) {
+    await requireMember()
     return { ok: false, error: "Unknown model" }
+  }
+  const access = await requireModelAccess(id)
+  if (!access.ok) return access
 
   const { data, error } = await supabaseAdmin()
     .from("models")
@@ -141,9 +155,13 @@ export async function setModelsEnabled(
   ids: string[],
   enabled: boolean
 ): Promise<ActionResult> {
-  await requireAdmin()
   const parsed = bulkIdsSchema.safeParse([...new Set(ids)])
-  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) }
+  if (!parsed.success) {
+    await requireMember()
+    return { ok: false, error: firstIssue(parsed.error) }
+  }
+  const access = await requireModelsAccess(parsed.data)
+  if (!access.ok) return access
 
   const db = supabaseAdmin()
   let changed = 0
@@ -168,9 +186,12 @@ export async function setModelsEnabled(
 }
 
 export async function deleteModel(id: string): Promise<ActionResult> {
-  await requireAdmin()
-  if (!idSchema.safeParse(id).success)
+  if (!idSchema.safeParse(id).success) {
+    await requireMember()
     return { ok: false, error: "Unknown model" }
+  }
+  const access = await requireModelAccess(id)
+  if (!access.ok) return access
 
   const { data, error } = await supabaseAdmin()
     .from("models")
@@ -185,9 +206,12 @@ export async function deleteModel(id: string): Promise<ActionResult> {
 }
 
 export async function resetModelHealth(id: string): Promise<ActionResult> {
-  await requireAdmin()
-  if (!idSchema.safeParse(id).success)
+  if (!idSchema.safeParse(id).success) {
+    await requireMember()
     return { ok: false, error: "Unknown model" }
+  }
+  const access = await requireModelAccess(id)
+  if (!access.ok) return access
 
   const { error } = await supabaseAdmin()
     .from("model_health")
@@ -202,9 +226,12 @@ export async function resetModelHealth(id: string): Promise<ActionResult> {
 export async function runModelTest(
   id: string
 ): Promise<ActionResult<ModelTestResult>> {
-  await requireAdmin()
-  if (!idSchema.safeParse(id).success)
+  if (!idSchema.safeParse(id).success) {
+    await requireMember()
     return { ok: false, error: "Unknown model" }
+  }
+  const access = await requireModelAccess(id)
+  if (!access.ok) return access
 
   try {
     const result = await testModel(id)
@@ -222,9 +249,12 @@ export async function suggestMetadata(
   providerId: string,
   modelId: string
 ): Promise<ActionResult<DiscoveredModel | null>> {
-  await requireAdmin()
-  if (!idSchema.safeParse(providerId).success)
+  if (!idSchema.safeParse(providerId).success) {
+    await requireMember()
     return { ok: false, error: "Unknown provider" }
+  }
+  const access = await requireProviderAccess(providerId)
+  if (!access.ok) return access
   const trimmed = modelId.trim()
   if (!trimmed) return { ok: false, error: "Enter a model id first" }
 

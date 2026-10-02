@@ -81,6 +81,8 @@ export interface ProviderRow {
   type: ProviderType
   config: ProviderConfig
   enabled: boolean
+  /** null = shared (admins manage it); otherwise the member who owns it. */
+  owner_email: string | null
   created_at: string
   updated_at: string
 }

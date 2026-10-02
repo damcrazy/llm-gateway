@@ -48,10 +48,19 @@ import { createProvider } from "./actions"
 import { hostOf, SLUG_HELP, SLUG_PATTERN, type FieldValues } from "./shared"
 import { SpecFields } from "./spec-fields"
 
+/**
+ * `own`: a member adding their own provider. Only their apps can use it, it
+ * must use a public https address, and its slug starts with `slugPrefix`
+ * (slugs are shared by everyone on the gateway).
+ */
 export function AddProviderDialog({
   variant = "default",
+  own = false,
+  slugPrefix = "",
 }: {
   variant?: "default" | "outline"
+  own?: boolean
+  slugPrefix?: string
 }) {
   const [open, setOpen] = useState(false)
 
@@ -65,22 +74,35 @@ export function AddProviderDialog({
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         {/* Mounted only while open, so each open starts at step one. */}
-        <AddProviderFlow onDone={() => setOpen(false)} />
+        <AddProviderFlow
+          own={own}
+          slugPrefix={slugPrefix}
+          onDone={() => setOpen(false)}
+        />
       </DialogContent>
     </Dialog>
   )
 }
 
-function AddProviderFlow({ onDone }: { onDone: () => void }) {
+function AddProviderFlow({
+  own,
+  slugPrefix,
+  onDone,
+}: {
+  own: boolean
+  slugPrefix: string
+  onDone: () => void
+}) {
   const [preset, setPreset] = useState<ProviderPreset | null>(null)
   return preset ? (
     <ProviderForm
       preset={preset}
+      slugPrefix={own ? slugPrefix : ""}
       onBack={() => setPreset(null)}
       onDone={onDone}
     />
   ) : (
-    <PresetPicker onPick={setPreset} />
+    <PresetPicker own={own} onPick={setPreset} />
   )
 }
 
@@ -91,24 +113,37 @@ const NATIVE_PRESETS = PROVIDER_PRESETS.filter(
   (p) => p.type !== "openai_compatible"
 )
 
+/** Presets that only work on the gateway's own machine (e.g. Ollama). */
+const isLocalPreset = (preset: ProviderPreset) =>
+  Boolean(preset.baseUrl?.startsWith("http://"))
+
 function PresetPicker({
+  own,
   onPick,
 }: {
+  own: boolean
   onPick: (preset: ProviderPreset) => void
 }) {
   return (
     <div className="grid gap-5">
       <DialogHeader>
-        <DialogTitle>Add provider</DialogTitle>
+        <DialogTitle>
+          {own ? "Add your own provider" : "Add provider"}
+        </DialogTitle>
         <DialogDescription>
-          Choose where the models live. Anything that speaks the OpenAI API can
-          be added as Custom.
+          {own
+            ? "Use your own API key. Only your apps can use this provider's models, and it must use a public https:// address."
+            : "Choose where the models live. Anything that speaks the OpenAI API can be added as Custom."}
         </DialogDescription>
       </DialogHeader>
       <PresetGroup
         title="OpenAI-compatible"
         description="Same adapter, different base URL. Models can be discovered automatically."
-        presets={COMPATIBLE_PRESETS}
+        presets={
+          own
+            ? COMPATIBLE_PRESETS.filter((preset) => !isLocalPreset(preset))
+            : COMPATIBLE_PRESETS
+        }
         describe={(preset) =>
           hostOf(preset.baseUrl) ?? "Any OpenAI-compatible base URL"
         }
@@ -171,10 +206,12 @@ function PresetGroup({
 
 function ProviderForm({
   preset,
+  slugPrefix,
   onBack,
   onDone,
 }: {
   preset: ProviderPreset
+  slugPrefix: string
   onBack: () => void
   onDone: () => void
 }) {
@@ -185,7 +222,9 @@ function ProviderForm({
   const defaultName =
     preset.label.replace(/\s*\([^)]*\)/g, "").trim() || preset.label
   const [name, setName] = useState(defaultName)
-  const [slug, setSlug] = useState(() => slugify(defaultName))
+  const slugFor = (value: string) =>
+    slugify(slugPrefix ? `${slugPrefix}-${value}` : value)
+  const [slug, setSlug] = useState(() => slugFor(defaultName))
   const [slugTouched, setSlugTouched] = useState(false)
   const [config, setConfig] = useState<FieldValues>(() => {
     const initial: FieldValues = {}
@@ -252,7 +291,7 @@ function ProviderForm({
             value={name}
             onChange={(event) => {
               setName(event.target.value)
-              if (!slugTouched) setSlug(slugify(event.target.value))
+              if (!slugTouched) setSlug(slugFor(event.target.value))
             }}
           />
         </Field>

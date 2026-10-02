@@ -217,10 +217,22 @@ export async function setRouteTargets(
   if (ids.length) {
     const { data: models, error } = await db
       .from("models")
-      .select("id, slug, kind")
+      .select("id, slug, kind, providers(owner_email)")
       .in("id", ids)
     if (error) return actionError(error)
-    const found = (models ?? []) as { id: string; slug: string; kind: string }[]
+    const found = (models ?? []) as unknown as {
+      id: string
+      slug: string
+      kind: string
+      providers: { owner_email: string | null } | null
+    }[]
+    // Routes are shared by every app; members' own models can't be in one.
+    if (found.some((model) => model.providers?.owner_email)) {
+      return {
+        ok: false,
+        error: "Routes can only use models from shared providers",
+      }
+    }
     if (found.length !== ids.length) {
       return {
         ok: false,

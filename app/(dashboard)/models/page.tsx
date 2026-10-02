@@ -35,13 +35,14 @@ export default async function ModelsPage() {
       </>
     )
   }
-  const { models, providers } = await loadModelList()
+  // Members' own providers are theirs to manage, not part of this list.
+  const { models, providers } = await loadModelList({ sharedOnly: true })
 
   return (
     <>
       <PageHeader
         title="Models"
-        description="Every model across your providers. Clients can call any enabled model by its slug, or through a route."
+        description="Every model across the shared providers. Clients can call any enabled model by its slug, or through a route."
         actions={
           <Button variant="outline" asChild>
             <Link href="/providers">

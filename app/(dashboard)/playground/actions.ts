@@ -46,7 +46,7 @@ export async function getPlaygroundOptions(
     const context = appId ? await loadAppContext(appId) : null
     if (appId && !context)
       return { ok: false, error: "That app no longer exists" }
-    return { ok: true, data: await playgroundOptions(context) }
+    return { ok: true, data: await playgroundOptions(context, me.email) }
   } catch (error) {
     return actionError(error)
   }

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
-import { requireAdmin } from "@/lib/auth"
+import { requireMember } from "@/lib/auth"
 import type { ProviderConfig } from "@/lib/db/types"
 import { invalidateGatewayConfig } from "@/lib/gateway/config"
 import { discoverModels, type DiscoveredModel } from "@/lib/gateway/discovery"
@@ -13,6 +13,8 @@ import {
   PROVIDER_TYPE_SPECS,
   type ProviderType,
 } from "@/lib/providers/catalog"
+import { checkPublicUrl } from "@/lib/net/public-fetch"
+import { MAX_OWN_PROVIDERS, requireProviderAccess } from "@/lib/provider-access"
 import { saveProviderCredentials } from "@/lib/providers/secrets"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
@@ -65,6 +67,40 @@ function afterProviderChange(providerId?: string) {
   if (providerId) revalidatePath(`/providers/${providerId}`)
 }
 
+const AWS_REGION = /^[a-z]{2}(-[a-z]+)+-\d+$/
+const GCP_LOCATION = /^[a-z0-9-]{1,40}$/
+
+/**
+ * Regions and locations become part of hostnames, so they must look like
+ * one. A member's own provider may only point at public https URLs.
+ */
+async function configProblem(
+  config: ProviderConfig,
+  isPrivate: boolean
+): Promise<string | null> {
+  if (config.region && !AWS_REGION.test(config.region))
+    return "Enter an AWS region like us-east-1"
+  if (config.location && !GCP_LOCATION.test(config.location))
+    return "Enter a location like us-central1 or global"
+  if (!isPrivate) return null
+  for (const [key, value] of Object.entries(config)) {
+    if (!/url$/i.test(key) || typeof value !== "string" || !value.trim())
+      continue
+    const problem = await checkPublicUrl(value.trim())
+    if (problem) return problem
+  }
+  return null
+}
+
+/** A valid id of a provider you manage (see lib/provider-access). */
+async function providerAccess(id: string) {
+  if (!idSchema.safeParse(id).success) {
+    await requireMember()
+    return { ok: false as const, error: "Unknown provider" }
+  }
+  return requireProviderAccess(id)
+}
+
 async function loadProvider(id: string): Promise<
   | {
       ok: true
@@ -98,7 +134,9 @@ export async function createProvider(input: {
   config: FieldValues
   credentials: FieldValues
 }): Promise<ActionResult<{ id: string }>> {
-  await requireAdmin()
+  // Admins add shared providers; members add their own, private ones.
+  const me = await requireMember()
+  const ownerEmail = me.isAdmin ? null : me.email
   const parsed = createProviderSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) }
 
@@ -112,8 +150,22 @@ export async function createProvider(input: {
     parsed.data.credentials
   )
   if (!credentials.ok) return credentials
+  const problem = await configProblem(config.value, ownerEmail !== null)
+  if (problem) return { ok: false, error: problem }
 
   const db = supabaseAdmin()
+  if (ownerEmail) {
+    const { count } = await db
+      .from("providers")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_email", ownerEmail)
+    if ((count ?? 0) >= MAX_OWN_PROVIDERS) {
+      return {
+        ok: false,
+        error: `You can connect up to ${MAX_OWN_PROVIDERS} providers`,
+      }
+    }
+  }
   const { data, error } = await db
     .from("providers")
     .insert({
@@ -121,6 +173,7 @@ export async function createProvider(input: {
       slug: parsed.data.slug,
       type: preset.type,
       config: { ...config.value, preset: preset.id } satisfies ProviderConfig,
+      owner_email: ownerEmail,
     })
     .select("id")
     .single()
@@ -150,9 +203,8 @@ export async function updateProvider(
   id: string,
   input: { name: string; config: FieldValues }
 ): Promise<ActionResult> {
-  await requireAdmin()
-  if (!idSchema.safeParse(id).success)
-    return { ok: false, error: "Unknown provider" }
+  const access = await providerAccess(id)
+  if (!access.ok) return access
   const parsed = updateProviderSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) }
 
@@ -160,6 +212,11 @@ export async function updateProvider(
   if (!existing.ok) return existing
   const cleaned = cleanConfigFields(existing.type, parsed.data.config)
   if (!cleaned.ok) return cleaned
+  const problem = await configProblem(
+    cleaned.value,
+    access.provider.ownerEmail !== null
+  )
+  if (problem) return { ok: false, error: problem }
 
   // Replace the editable fields; keep everything else (preset, headers, …).
   const editable = new Set(
@@ -183,9 +240,8 @@ export async function setProviderEnabled(
   id: string,
   enabled: boolean
 ): Promise<ActionResult> {
-  await requireAdmin()
-  if (!idSchema.safeParse(id).success)
-    return { ok: false, error: "Unknown provider" }
+  const access = await providerAccess(id)
+  if (!access.ok) return access
 
   const { data, error } = await supabaseAdmin()
     .from("providers")
@@ -207,9 +263,8 @@ export async function replaceProviderCredentials(
   id: string,
   values: FieldValues
 ): Promise<ActionResult> {
-  await requireAdmin()
-  if (!idSchema.safeParse(id).success)
-    return { ok: false, error: "Unknown provider" }
+  const access = await providerAccess(id)
+  if (!access.ok) return access
   const parsedValues = fieldValuesSchema.safeParse(values)
   if (!parsedValues.success) return { ok: false, error: "Invalid credentials" }
 
@@ -229,9 +284,8 @@ export async function replaceProviderCredentials(
 }
 
 export async function deleteProvider(id: string): Promise<ActionResult> {
-  await requireAdmin()
-  if (!idSchema.safeParse(id).success)
-    return { ok: false, error: "Unknown provider" }
+  const access = await providerAccess(id)
+  if (!access.ok) return access
 
   const { data, error } = await supabaseAdmin()
     .from("providers")
@@ -255,9 +309,8 @@ export async function deleteProvider(id: string): Promise<ActionResult> {
 export async function discoverProviderModels(
   providerId: string
 ): Promise<ActionResult<{ models: DiscoveredModel[]; total: number }>> {
-  await requireAdmin()
-  if (!idSchema.safeParse(providerId).success)
-    return { ok: false, error: "Unknown provider" }
+  const access = await providerAccess(providerId)
+  if (!access.ok) return access
 
   const existing = await loadProvider(providerId)
   if (!existing.ok) return existing
@@ -320,9 +373,8 @@ export async function importModels(
   providerId: string,
   models: NewModelInput[]
 ): Promise<ActionResult<{ imported: number }>> {
-  await requireAdmin()
-  if (!idSchema.safeParse(providerId).success)
-    return { ok: false, error: "Unknown provider" }
+  const access = await providerAccess(providerId)
+  if (!access.ok) return access
   const list = importListSchema.safeParse(models)
   if (!list.success) return { ok: false, error: firstIssue(list.error) }
 

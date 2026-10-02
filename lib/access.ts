@@ -49,6 +49,22 @@ export function modelPermitted(
   }
 }
 
+/**
+ * Whether `user` may call a model. A private provider's models belong to
+ * its owner alone (their access policy doesn't apply: they bring their own
+ * keys); shared models follow the policy.
+ */
+export function canUseModel(
+  policy: AccessPolicy,
+  model: PricedModel,
+  providerOwner: string | null,
+  user: string | null,
+  viaRoute?: string
+): boolean {
+  if (providerOwner !== null) return providerOwner === user
+  return modelPermitted(policy, model, viaRoute)
+}
+
 export function describePolicy(policy: AccessPolicy): string {
   if (policy.access === "free") return "free models only"
   if (policy.access === "allowlist") return "an allow-list of routes and models"

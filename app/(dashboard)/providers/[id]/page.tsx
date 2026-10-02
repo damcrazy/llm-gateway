@@ -2,7 +2,13 @@ import { cache } from "react"
 import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { CpuIcon, ExternalLinkIcon, KeyRoundIcon, PlusIcon } from "lucide-react"
+import {
+  CpuIcon,
+  ExternalLinkIcon,
+  KeyRoundIcon,
+  LockIcon,
+  PlusIcon,
+} from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { PageHeader } from "@/components/page-header"
@@ -30,8 +36,9 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { requireAdmin } from "@/lib/auth"
+import { requireMember } from "@/lib/auth"
 import type { ProviderRow } from "@/lib/db/types"
+import { canManageProvider } from "@/lib/provider-access"
 import { PROVIDER_TYPE_SPECS } from "@/lib/providers/catalog"
 import { loadCredentialHints } from "@/lib/providers/secrets"
 import { createClient } from "@/lib/supabase/server"
@@ -67,10 +74,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function ProviderPage({ params }: Props) {
-  await requireAdmin()
+  const me = await requireMember()
   const { id } = await params
   const provider = await getProvider(id)
-  if (!provider) notFound()
+  // Shared providers are managed by admins; private ones by their owner.
+  if (!provider || !canManageProvider(me, provider.owner_email ?? null))
+    notFound()
+  const own = provider.owner_email !== null
 
   const [{ models }, hints] = await Promise.all([
     loadModelList({ providerId: provider.id }),
@@ -121,6 +131,12 @@ export default async function ProviderPage({ params }: Props) {
         title={provider.name}
         description={
           <span className="flex flex-wrap items-center gap-1.5">
+            {own && (
+              <Badge className="gap-1">
+                <LockIcon className="size-3" />
+                Private · only your apps
+              </Badge>
+            )}
             <Badge variant="secondary">{typeLabel}</Badge>
             {presetLabel && <Badge variant="outline">{presetLabel}</Badge>}
             <span className="font-mono text-xs">{provider.slug}</span>

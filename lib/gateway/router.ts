@@ -1,6 +1,6 @@
 import "server-only"
 
-import { describePolicy, modelPermitted, type AccessPolicy } from "@/lib/access"
+import { canUseModel, describePolicy, type AccessPolicy } from "@/lib/access"
 import type { AppBucket, GatewayApp, ModelKind } from "@/lib/db/types"
 import { CAPABILITY_LABELS } from "@/lib/providers/catalog"
 
@@ -35,9 +35,15 @@ export function resolveModel(
   kind: ModelKind,
   app: GatewayApp | null,
   request?: ChatRequest,
-  policy: AccessPolicy = { access: "all" }
+  policy: AccessPolicy = { access: "all" },
+  /** Whose private providers may be used; defaults to the app's owner. */
+  privateOwner: string | null = app?.owner_email ?? null
 ): Resolution {
   const buckets = app?.buckets ?? []
+  // Another member's private models don't exist as far as this caller knows.
+  const visible = (model: ModelRuntime) =>
+    model.provider.ownerEmail === null ||
+    model.provider.ownerEmail === privateOwner
   let name = requested?.trim() ?? ""
   if (!name || name === "default") name = app?.default_model ?? ""
   if (!name) {
@@ -57,6 +63,7 @@ export function resolveModel(
     targets = bucket.model_ids
       .map((id) => snapshot.models.get(id))
       .filter((model): model is ModelRuntime => Boolean(model))
+      .filter(visible)
     if (!targets.length) {
       throw new GatewayError(
         503,
@@ -82,9 +89,13 @@ export function resolveModel(
     targets = route.targets
       .map((id) => snapshot.models.get(id))
       .filter((model): model is ModelRuntime => Boolean(model))
+      .filter(visible)
   } else {
     const bySlug = snapshot.modelsBySlug.get(name)
-    targets = bySlug ? [bySlug] : (snapshot.modelsByUpstreamId.get(name) ?? [])
+    targets =
+      bySlug && visible(bySlug)
+        ? [bySlug]
+        : (snapshot.modelsByUpstreamId.get(name) ?? []).filter(visible)
     if (!targets.length) {
       throw new GatewayError(
         404,
@@ -110,9 +121,15 @@ export function resolveModel(
     }
   }
 
-  if (policy.access !== "all") {
+  {
     targets = targets.filter((model) =>
-      modelPermitted(policy, model, route?.name)
+      canUseModel(
+        policy,
+        model,
+        model.provider.ownerEmail,
+        privateOwner,
+        route?.name
+      )
     )
     if (!targets.length) {
       throw new GatewayError(
@@ -209,21 +226,33 @@ export interface AvailableEntry {
 export function listAvailableModels(
   snapshot: GatewaySnapshot,
   app: GatewayApp | null,
-  policy: AccessPolicy = { access: "all" }
+  policy: AccessPolicy = { access: "all" },
+  privateOwner: string | null = app?.owner_email ?? null
 ): AvailableEntry[] {
   const buckets = app?.buckets ?? []
   const onlyBuckets = app?.only_bucket_models === true
   const inBuckets = new Set(buckets.flatMap((b) => b.model_ids))
-  const usable = (model: ModelRuntime | undefined): model is ModelRuntime =>
+  const usable = (
+    model: ModelRuntime | undefined,
+    viaRoute?: string
+  ): model is ModelRuntime =>
     Boolean(
-      model?.enabled && model.provider.enabled && modelPermitted(policy, model)
+      model?.enabled &&
+      model.provider.enabled &&
+      canUseModel(
+        policy,
+        model,
+        model.provider.ownerEmail,
+        privateOwner,
+        viaRoute
+      )
     )
 
   const bucketEntries: AvailableEntry[] = []
   for (const bucket of buckets) {
     const chain = bucket.model_ids
       .map((id) => snapshot.models.get(id))
-      .filter(usable)
+      .filter((model) => usable(model))
     const first = chain[0]
     if (!first || !app) continue
     bucketEntries.push({
@@ -241,14 +270,9 @@ export function listAvailableModels(
   for (const route of snapshot.routes.values()) {
     // Buckets hide global routes of the same name; "only buckets" hides all.
     if (!route.enabled || onlyBuckets || bucketNames.has(route.name)) continue
-    const reachable = route.targets.some((id) => {
-      const model = snapshot.models.get(id)
-      return (
-        model?.enabled &&
-        model.provider.enabled &&
-        modelPermitted(policy, model, route.name)
-      )
-    })
+    const reachable = route.targets.some((id) =>
+      usable(snapshot.models.get(id), route.name)
+    )
     if (!reachable) continue
     entries.push({
       id: route.name,
@@ -259,9 +283,8 @@ export function listAvailableModels(
     })
   }
   for (const model of snapshot.models.values()) {
-    if (!model.enabled || !model.provider.enabled) continue
+    if (!usable(model)) continue
     if (onlyBuckets && !inBuckets.has(model.id)) continue
-    if (!modelPermitted(policy, model)) continue
     entries.push({
       id: model.slug,
       kind: model.kind,

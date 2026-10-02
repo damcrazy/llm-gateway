@@ -21,6 +21,8 @@ export interface BucketModel {
   /** Display name, or the upstream model id. */
   name: string
   provider: string
+  /** From the app owner's own (private) provider. */
+  own: boolean
   kind: "chat" | "embedding"
   capabilities: Capability[]
   contextWindow: number | null

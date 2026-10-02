@@ -26,6 +26,8 @@ export interface ProviderRuntime {
   type: ProviderType
   config: ProviderConfig
   enabled: boolean
+  /** null = shared provider; otherwise only this member's apps may use it. */
+  ownerEmail: string | null
   credentials: ProviderCredentials
   /** Set when credentials could not be decrypted. */
   credentialError?: string
@@ -126,6 +128,7 @@ async function loadSnapshot(): Promise<GatewaySnapshot> {
       type: row.type,
       config: row.config ?? {},
       enabled: row.enabled,
+      ownerEmail: row.owner_email ?? null,
       credentials,
       credentialError,
     })

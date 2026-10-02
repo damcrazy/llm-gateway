@@ -78,7 +78,11 @@ const loadRoute = cache(async (id: string) => {
         "id, provider_id, slug, display_name, kind, enabled, capabilities, input_price_per_mtok, output_price_per_mtok"
       )
       .order("slug"),
-    supabase.from("providers").select("id, name, enabled"),
+    // Routes are shared by every app, so only shared providers' models.
+    supabase
+      .from("providers")
+      .select("id, name, enabled")
+      .is("owner_email", null),
     supabase
       .from("model_health")
       .select("model_id, cooldown_until, last_error"),
@@ -103,35 +107,38 @@ const loadRoute = cache(async (id: string) => {
   )
 
   const now = Date.now()
-  const models: TargetModel[] = (
-    (modelsResult.data ?? []) as ModelSelection[]
-  ).map((model) => {
-    const provider = providers.get(model.provider_id)
-    const state = health.get(model.id)
-    const coolingDown =
-      !!state?.cooldown_until && new Date(state.cooldown_until).getTime() > now
-    return {
-      id: model.id,
-      slug: model.slug,
-      displayName: model.display_name,
-      kind: model.kind,
-      enabled: model.enabled,
-      providerName: provider?.name ?? "Unknown provider",
-      providerEnabled: provider?.enabled ?? false,
-      capabilities: model.capabilities ?? [],
-      inputPrice:
-        model.input_price_per_mtok == null
-          ? null
-          : Number(model.input_price_per_mtok),
-      outputPrice:
-        model.output_price_per_mtok == null
-          ? null
-          : Number(model.output_price_per_mtok),
-      coolingDown,
-      cooldownLabel: coolingDown ? formatRelative(state!.cooldown_until) : null,
-      lastError: state?.last_error ?? null,
-    }
-  })
+  const models: TargetModel[] = ((modelsResult.data ?? []) as ModelSelection[])
+    .filter((model) => providers.has(model.provider_id))
+    .map((model) => {
+      const provider = providers.get(model.provider_id)
+      const state = health.get(model.id)
+      const coolingDown =
+        !!state?.cooldown_until &&
+        new Date(state.cooldown_until).getTime() > now
+      return {
+        id: model.id,
+        slug: model.slug,
+        displayName: model.display_name,
+        kind: model.kind,
+        enabled: model.enabled,
+        providerName: provider?.name ?? "Unknown provider",
+        providerEnabled: provider?.enabled ?? false,
+        capabilities: model.capabilities ?? [],
+        inputPrice:
+          model.input_price_per_mtok == null
+            ? null
+            : Number(model.input_price_per_mtok),
+        outputPrice:
+          model.output_price_per_mtok == null
+            ? null
+            : Number(model.output_price_per_mtok),
+        coolingDown,
+        cooldownLabel: coolingDown
+          ? formatRelative(state!.cooldown_until)
+          : null,
+        lastError: state?.last_error ?? null,
+      }
+    })
 
   const known = new Set(models.map((model) => model.id))
   const targetIds = (

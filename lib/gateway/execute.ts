@@ -240,6 +240,8 @@ export async function executeChat(options: {
   request: ChatRequest
   app: GatewayApp | null
   policy?: AccessPolicy
+  /** Whose private providers may be used (default: the app's owner). */
+  privateOwner?: string | null
   signal: AbortSignal
   recorder: RequestRecorder
 }): Promise<ChatExecution> {
@@ -253,7 +255,10 @@ export async function executeChat(options: {
     "chat",
     options.app,
     request,
-    options.policy
+    options.policy,
+    options.privateOwner === undefined
+      ? (options.app?.owner_email ?? null)
+      : options.privateOwner
   )
   recorder.requestedModel = resolution.requestedModel
   recorder.route = resolution.route
@@ -397,6 +402,8 @@ export async function executeEmbeddings(options: {
   request: EmbeddingsRequest
   app: GatewayApp | null
   policy?: AccessPolicy
+  /** Whose private providers may be used (default: the app's owner). */
+  privateOwner?: string | null
   signal: AbortSignal
   recorder: RequestRecorder
 }): Promise<{ response: EmbeddingsResponse; model: ModelRuntime }> {
@@ -409,7 +416,10 @@ export async function executeEmbeddings(options: {
     "embedding" satisfies ModelKind,
     options.app,
     undefined,
-    options.policy
+    options.policy,
+    options.privateOwner === undefined
+      ? (options.app?.owner_email ?? null)
+      : options.privateOwner
   )
   recorder.requestedModel = resolution.requestedModel
   recorder.route = resolution.route

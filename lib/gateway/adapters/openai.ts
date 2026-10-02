@@ -1,6 +1,7 @@
 import "server-only"
 
 import type { ProviderRuntime } from "../config"
+import { fetchFor } from "../provider-fetch"
 import {
   UpstreamError,
   extractErrorMessage,
@@ -138,7 +139,7 @@ export const openAIAdapter: ProviderAdapter = {
       "chat/completions",
       ctx.model.model_id
     )
-    const response = await fetch(url, {
+    const response = await fetchFor(ctx.model.provider)(url, {
       method: "POST",
       headers,
       body: JSON.stringify(buildBody(request, ctx)),
@@ -171,7 +172,7 @@ export const openAIAdapter: ProviderAdapter = {
       "embeddings",
       ctx.model.model_id
     )
-    const response = await fetch(url, {
+    const response = await fetchFor(ctx.model.provider)(url, {
       method: "POST",
       headers,
       body: JSON.stringify({ ...request, model: ctx.model.model_id }),
@@ -187,7 +188,7 @@ export async function listOpenAIModels(
   provider: ProviderRuntime
 ): Promise<Record<string, unknown>[]> {
   const { url, headers } = endpoint(provider, "chat/completions", "")
-  const response = await fetch(
+  const response = await fetchFor(provider)(
     url.replace(/\/chat\/completions(\?.*)?$/, "/models"),
     {
       headers,

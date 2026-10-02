@@ -86,7 +86,7 @@ const NAV: {
         title: "Providers",
         href: "/providers",
         icon: ServerIcon,
-        access: "admin",
+        access: "member",
       },
       { title: "Routes", href: "/routes", icon: RouteIcon, access: "admin" },
     ],

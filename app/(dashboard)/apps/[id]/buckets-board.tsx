@@ -622,6 +622,7 @@ export function ModelCardBody({
           </div>
           <div className="truncate text-xs text-muted-foreground">
             {model.provider}
+            {model.own && " · your provider"}
             {model.kind === "embedding" && " · embedding"}
           </div>
         </div>

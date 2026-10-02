@@ -337,4 +337,90 @@ describe("resolveModel", () => {
       ])
     })
   })
+
+  describe("private providers", () => {
+    const mine = provider({ slug: "my-openai", ownerEmail: "me@example.com" })
+    const theirs = provider({
+      slug: "their-openai",
+      ownerEmail: "them@example.com",
+    })
+    const myModel = model(mine, "gpt-4o", {
+      input_price_per_mtok: 2.5,
+      output_price_per_mtok: 10,
+    })
+    const theirModel = model(theirs, "gpt-4o", {
+      input_price_per_mtok: 2.5,
+      output_price_per_mtok: 10,
+    })
+    const shared = model(groq, "shared-free", {
+      input_price_per_mtok: 0,
+      output_price_per_mtok: 0,
+    })
+    const snap = snapshot(
+      [myModel, theirModel, shared],
+      [route("global", [theirModel, shared])]
+    )
+    const myApp = app({ owner_email: "me@example.com" })
+    const freeOnly = accessPolicy({
+      role: "member",
+      model_access: "free",
+      allowed_models: [],
+    })
+
+    test("the owner can call their own paid model even on a free-only plan", () => {
+      expect(
+        resolveModel(snap, "my-openai/gpt-4o", "chat", myApp, chat(), freeOnly)
+          .candidates
+      ).toEqual([myModel])
+    })
+
+    test("another member's model is a plain 404", () => {
+      try {
+        resolveModel(snap, "their-openai/gpt-4o", "chat", myApp, chat())
+        throw new Error("expected to throw")
+      } catch (error) {
+        expect((error as GatewayError).status).toBe(404)
+      }
+    })
+
+    test("upstream ids only match visible models", () => {
+      expect(
+        resolveModel(snap, "gpt-4o", "chat", myApp, chat()).candidates
+      ).toEqual([myModel])
+    })
+
+    test("routes and buckets skip other members' private models", () => {
+      expect(
+        resolveModel(snap, "global", "chat", myApp, chat()).candidates
+      ).toEqual([shared])
+      const sneaky = app({
+        owner_email: "me@example.com",
+        buckets: [{ name: "b", model_ids: [theirModel.id, myModel.id] }],
+      })
+      expect(
+        resolveModel(snap, "b", "chat", sneaky, chat()).candidates
+      ).toEqual([myModel])
+    })
+
+    test("without the owner (an admin running the app) private models are hidden", () => {
+      expect(() =>
+        resolveModel(
+          snap,
+          "my-openai/gpt-4o",
+          "chat",
+          myApp,
+          chat(),
+          { access: "all" },
+          null
+        )
+      ).toThrow(GatewayError)
+    })
+
+    test("/v1/models shows your own private models, not anyone else's", () => {
+      const ids = listAvailableModels(snap, myApp, freeOnly).map((m) => m.id)
+      expect(ids).toContain("my-openai/gpt-4o")
+      expect(ids).not.toContain("their-openai/gpt-4o")
+      expect(ids).toContain("groq/shared-free")
+    })
+  })
 })

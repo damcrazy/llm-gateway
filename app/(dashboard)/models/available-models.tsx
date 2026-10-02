@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import { CopyButton } from "@/components/animate-ui/components/buttons/copy"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -15,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { accessPolicy, describePolicy, modelPermitted } from "@/lib/access"
+import { accessPolicy, canUseModel, describePolicy } from "@/lib/access"
 import type { SessionMember } from "@/lib/auth"
 import type { ModelRow, RouteRow } from "@/lib/db/types"
 import { priceTier } from "@/lib/pricing"
@@ -62,7 +64,7 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
         .select("route_id, model_id, position")
         .order("position"),
       // Members can't read providers; only their on/off state is needed here.
-      supabaseAdmin().from("providers").select("id, enabled"),
+      supabaseAdmin().from("providers").select("id, enabled, owner_email"),
     ])
 
   const policy = accessPolicy({
@@ -70,11 +72,28 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
     model_access: member.modelAccess,
     allowed_models: member.allowedModels,
   })
+  const providerRows = (providersResult.data ?? []) as {
+    id: string
+    enabled: boolean
+    owner_email: string | null
+  }[]
   const liveProviders = new Set(
-    ((providersResult.data ?? []) as { id: string; enabled: boolean }[])
+    providerRows
       .filter((provider) => provider.enabled)
       .map((provider) => provider.id)
   )
+  const ownerOf = new Map(
+    providerRows.map((provider) => [provider.id, provider.owner_email])
+  )
+  // Shared models follow the policy; your own providers' models are yours.
+  const usable = (model: ModelFields, viaRoute?: string) =>
+    canUseModel(
+      policy,
+      model,
+      ownerOf.get(model.provider_id) ?? null,
+      member.email,
+      viaRoute
+    )
   const live = ((modelsResult.data ?? []) as ModelFields[]).filter((model) =>
     liveProviders.has(model.provider_id)
   )
@@ -100,16 +119,17 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
     >[]
   )
     .map((route) => {
-      const usable = (targetsByRoute.get(route.id) ?? []).filter((model) =>
-        modelPermitted(policy, model, route.name)
+      const reachable = (targetsByRoute.get(route.id) ?? []).filter((model) =>
+        usable(model, route.name)
       )
-      return { ...route, usable }
+      return { ...route, usable: reachable }
     })
     .filter((route) => route.usable.length > 0)
 
   const models: AvailableModel[] = live
-    .filter((model) => modelPermitted(policy, model))
+    .filter((model) => usable(model))
     .map((model) => ({
+      own: ownerOf.get(model.provider_id) === member.email,
       slug: model.slug,
       displayName: model.display_name,
       kind: model.kind,
@@ -122,10 +142,17 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
   return (
     <>
       <p className="text-sm text-muted-foreground">
-        Your account can call {describePolicy(policy)}
+        From the gateway&apos;s shared providers, your account can call{" "}
+        {describePolicy(policy)}
         {member.monthlyBudgetUsd != null &&
           ` (budget $${member.monthlyBudgetUsd.toFixed(2)} a month across your apps)`}
-        . Send a route name or model slug as <code>model</code>.
+        . Models from{" "}
+        <Link href="/providers" className="underline underline-offset-4">
+          your own providers
+        </Link>{" "}
+        are always available to your apps. Send a route name or model slug as{" "}
+        <code>model</code>, or group models into buckets on an app&apos;s Models
+        tab.
       </p>
 
       <Card className="pb-0">

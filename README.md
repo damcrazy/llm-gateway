@@ -176,8 +176,15 @@ Anyone who signs up becomes a **Member** with free models only. On **Members** (
 | Role | Can do |
 | --- | --- |
 | Superadmin | Everything, including adding/removing people. Set by `SUPERADMIN_EMAIL`. |
-| Admin | Providers, models, routes, every app and log. Can't manage people. |
-| Member | Their own apps, API keys, usage and logs. Sees only the routes and models they're allowed to call. |
+| Admin | Shared providers, models, routes, every app and log. Can't manage people. |
+| Member | Their own apps, API keys, usage, logs and **their own providers**. Sees only the shared routes and models they're allowed to call, plus their own. |
+
+### Shared and private providers
+
+- **Shared providers** are added by admins. Every member can use their models, within the model access and budget you set for them.
+- **Private providers** are added by members on **Providers**, with their own API keys. Only that member's apps can use the models: other members can't see them, call them or put them in a bucket or route, and admins only see a read-only list. Their models aren't limited by the member's model access (it's their key), and their cost doesn't count toward the monthly budget you set. App budgets still count everything.
+- A member can connect up to 10 providers. Their slugs are prefixed with the member's name by default, since model names (`slug/model`) are shared across the gateway.
+- Removing a member deletes their providers too.
 
 For each member you set:
 - **Model access:** free models only (the default), a picked list of routes and models, or everything.
@@ -199,6 +206,12 @@ Members can only run as their own apps. Admins can also pick **No app** for unre
 - **Removing someone** deletes their account and takes effect on their next request. Because sign-up is open, they could create a new account later, starting again as a member with free models only. Passwords are at least 12 characters.
 - **Email links and redirects:** reset links work once, open a session that can only set a new password for 15 minutes, and still need 2FA to reach the dashboard. Post-sign-in redirects only accept same-site paths.
 - **Provider credentials** are AES-256-GCM encrypted in `provider_secrets`, a table with no RLS policies, so only the service role can read it. They never reach the browser.
+- **Members' own providers can't reach your network.** Anyone can sign up, so a member's provider may only call public `https://` addresses:
+  - URLs are checked when saved.
+  - Every connection is checked again after DNS resolution (`lib/net/public-fetch.ts`), so a hostname re-pointed at `127.0.0.1` or the cloud metadata address `169.254.169.254` later is refused.
+  - Redirects are refused.
+  - Shared providers have no such limit, so a local Ollama still works.
+- **Private models are invisible to others** in the router, `/v1/models`, the dashboard and RLS (`can_see_provider`). Another member's model slug answers 404, as if it didn't exist.
 - **App API keys** are stored as SHA-256 hashes and shown once. Each app can have a model allowlist, a requests-per-minute limit, a monthly budget and payload logging (off by default).
 
 ## Project layout
