@@ -1,7 +1,7 @@
 import "server-only"
 
 import type { AccessPolicy } from "@/lib/access"
-import type { GatewayApp, ModelKind } from "@/lib/db/types"
+import type { GatewayApp, MediaKind, ModelKind } from "@/lib/db/types"
 
 import {
   cacheKey,
@@ -13,6 +13,7 @@ import {
   type CacheOptions,
 } from "./cache"
 import { adapterFor } from "./adapters"
+import type { MediaPath } from "./adapters/types"
 import { getSnapshot, type GatewaySnapshot, type ModelRuntime } from "./config"
 import {
   ClientAbortError,
@@ -21,6 +22,7 @@ import {
   toUpstreamError,
 } from "./errors"
 import { decideOnFailure, recordFailure, recordSuccess } from "./health"
+import { checkStructuredOutput, structuredFormat } from "./json-guard"
 import { describePii, scrubChatRequest, scrubText, type PiiKind } from "./pii"
 import { noteProviderCall } from "./quota"
 import type { RequestRecorder } from "./recorder"
@@ -330,6 +332,13 @@ function finalError(
   }
   const last = attempts.at(-1)
   const where = last ? ` (${last.provider} · ${last.model})` : ""
+  if (lastError.kind === "output") {
+    return new GatewayError(
+      502,
+      `No model returned output matching the requested format. Last${where}: ${lastError.message.replace(/^Invalid output: /, "")}`,
+      "invalid_structured_output"
+    )
+  }
   if (lastError.status && [400, 413, 422].includes(lastError.status)) {
     return new GatewayError(
       lastError.status,
@@ -421,6 +430,22 @@ function protectChat(
   return scrubbed
 }
 
+/** Scrubs (or refuses) plain texts per the app's PII setting. */
+export function protectTexts(
+  app: GatewayApp | null,
+  texts: string[],
+  recorder: RequestRecorder
+): string[] {
+  const mode = app?.pii_mode ?? "off"
+  if (mode === "off") return texts
+  const found = new Set<PiiKind>()
+  const scrubbed = texts.map((text) => scrubText(text, found))
+  if (!found.size) return texts
+  recorder.piiFound = [...found]
+  if (mode === "block") throw piiError([...found])
+  return scrubbed
+}
+
 function protectEmbeddings(
   app: GatewayApp | null,
   request: EmbeddingsRequest,
@@ -500,6 +525,12 @@ export async function executeChat(options: {
     }
   }
 
+  // Streams can't be checked before they reach the client.
+  const guard =
+    options.app?.json_guard && !request.stream
+      ? structuredFormat(request)
+      : null
+
   const failover = await withFailover(
     snapshot,
     resolution,
@@ -515,7 +546,13 @@ export async function executeChat(options: {
         const result = await call
         if (result.type !== "json")
           throw new UpstreamError("Expected a JSON response", 502)
-        return result
+        if (!guard) return result
+        const checked = checkStructuredOutput(result.completion, guard)
+        if (!checked.ok)
+          throw new UpstreamError(`Invalid output: ${checked.problem}`, null, {
+            kind: "output",
+          })
+        return { type: "json", completion: checked.completion }
       }
 
       // Only commit to this model once it has produced its first chunk.
@@ -712,5 +749,65 @@ export async function executeEmbeddings(options: {
     estimated: prompt == null,
   }
   recorder.finish()
+  return { response: value, model }
+}
+
+/**
+ * Images, speech, transcription and rerank: the request body is passed to
+ * the provider as-is (with its model id), with the same routing, failover
+ * and limits as chat. Resolves with the provider's response, body unread.
+ */
+export async function executeMedia(options: {
+  kind: MediaKind
+  path: MediaPath
+  model: string
+  app: GatewayApp | null
+  policy?: AccessPolicy
+  /** Whose private providers may be used (default: the app's owner). */
+  privateOwner?: string | null
+  /** The body for one attempt, given the provider's model id. */
+  body: (modelId: string) => string | FormData
+  signal: AbortSignal
+  recorder: RequestRecorder
+}): Promise<{ response: Response; model: ModelRuntime }> {
+  const { recorder } = options
+  recorder.requestedModel = options.model || undefined
+  const snapshot = await getSnapshot()
+  const resolution = resolveModel(
+    snapshot,
+    options.model,
+    options.kind,
+    options.app,
+    undefined,
+    options.policy,
+    options.privateOwner === undefined
+      ? (options.app?.owner_email ?? null)
+      : options.privateOwner
+  )
+  recorder.requestedModel = resolution.requestedModel
+  recorder.route = resolution.route
+
+  const { value, model } = await withFailover(
+    snapshot,
+    resolution,
+    recorder,
+    options.signal,
+    (candidate, ctx) => {
+      const adapter = adapterFor(candidate.provider.type)
+      if (!adapter.media) {
+        throw new UpstreamError(
+          `${candidate.provider.name} doesn't offer /${options.path}`,
+          null,
+          { kind: "config" }
+        )
+      }
+      return adapter.media(options.path, options.body(candidate.model_id), {
+        model: candidate,
+        signal: ctx.signal,
+      })
+    },
+    // A response that lost a hedged race is discarded unread.
+    (response) => void response.body?.cancel().catch(() => {})
+  )
   return { response: value, model }
 }

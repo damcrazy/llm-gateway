@@ -310,6 +310,30 @@ export const ENDPOINTS = [
     streaming: null,
   },
   {
+    method: "POST",
+    path: "/v1/images/generations",
+    format: "OpenAI Images (image models)",
+    streaming: null,
+  },
+  {
+    method: "POST",
+    path: "/v1/audio/speech",
+    format: "OpenAI text to speech (speech models)",
+    streaming: "Audio bytes as they're generated",
+  },
+  {
+    method: "POST",
+    path: "/v1/audio/transcriptions",
+    format: "OpenAI transcription, multipart (transcription models)",
+    streaming: null,
+  },
+  {
+    method: "POST",
+    path: "/v1/rerank",
+    format: "Rerank: query + documents (Cohere / Jina style)",
+    streaming: null,
+  },
+  {
     method: "GET",
     path: "/v1/models",
     format: "OpenAI model list",

@@ -141,6 +141,7 @@ const settingsSchema = z.object({
     .max(1_000_000_000, "Token limit is too large")
     .nullable(),
   piiMode: z.enum(["off", "redact", "block"]),
+  jsonGuard: z.boolean(),
   logPayloads: z.boolean(),
   cacheTtlSeconds: z
     .number()
@@ -171,6 +172,7 @@ export async function updateAppSettings(
       rpm_limit: s.rpmLimit,
       tpm_limit: s.tpmLimit,
       pii_mode: s.piiMode,
+      json_guard: s.jsonGuard,
       log_payloads: s.logPayloads,
       cache_ttl_seconds: s.cacheTtlSeconds,
     })

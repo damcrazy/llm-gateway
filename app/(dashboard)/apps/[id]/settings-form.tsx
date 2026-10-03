@@ -51,6 +51,7 @@ type SettingsApp = Pick<
   | "rpm_limit"
   | "tpm_limit"
   | "pii_mode"
+  | "json_guard"
   | "log_payloads"
   | "cache_ttl_seconds"
 >
@@ -88,6 +89,7 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
     app.tpm_limit == null ? "" : String(app.tpm_limit)
   )
   const [piiMode, setPiiMode] = useState<PiiMode>(app.pii_mode)
+  const [jsonGuard, setJsonGuard] = useState(app.json_guard)
   const [logPayloads, setLogPayloads] = useState(app.log_payloads)
   const [cacheTtl, setCacheTtl] = useState(
     app.cache_ttl_seconds == null ? CACHE_OFF : String(app.cache_ttl_seconds)
@@ -104,6 +106,7 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
         rpmLimit: parseOptionalNumber(rpm),
         tpmLimit: parseOptionalNumber(tpm),
         piiMode,
+        jsonGuard,
         logPayloads,
         cacheTtlSeconds: cacheTtl === CACHE_OFF ? null : Number(cacheTtl),
       })
@@ -288,6 +291,28 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
                   ))}
                 </SelectContent>
               </Select>
+            </Field>
+
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldLabel htmlFor="settings-json-guard">
+                  Check structured output
+                </FieldLabel>
+                <FieldDescription>
+                  When a request asks for JSON (
+                  <code className="font-mono text-xs">response_format</code>{" "}
+                  json_object or json_schema), check the answer is valid JSON
+                  that matches the schema. If not, the next model in the bucket
+                  answers instead, and the same model gets one more try if
+                  it&apos;s the last. Answers wrapped in ```json fences are
+                  unwrapped. Not for streaming requests.
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                id="settings-json-guard"
+                checked={jsonGuard}
+                onCheckedChange={setJsonGuard}
+              />
             </Field>
 
             <Field orientation="horizontal">

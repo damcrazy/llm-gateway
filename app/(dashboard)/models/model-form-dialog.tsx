@@ -39,6 +39,12 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import type { ModelKind } from "@/lib/db/types"
+import {
+  isMediaKind,
+  MODEL_KIND_LABELS,
+  MODEL_KINDS,
+  UNIT_PRICE_LABELS,
+} from "@/lib/model-kinds"
 import type { DiscoveredModel } from "@/lib/gateway/discovery"
 import {
   CAPABILITIES,
@@ -62,6 +68,7 @@ interface FormState {
   inputPrice: string
   outputPrice: string
   cachedInputPrice: string
+  unitPrice: string
   quotaRpm: string
   quotaRpd: string
 }
@@ -82,6 +89,7 @@ function initialState(model?: ModelListItem): FormState {
     inputPrice: toText(model?.inputPrice),
     outputPrice: toText(model?.outputPrice),
     cachedInputPrice: toText(model?.cachedInputPrice),
+    unitPrice: toText(model?.unitPrice),
     quotaRpm: toText(model?.quotaRpm),
     quotaRpd: toText(model?.quotaRpd),
   }
@@ -120,6 +128,9 @@ function toFields(state: FormState): ModelFieldsInput {
     input_price_per_mtok: optionalNumber(state.inputPrice),
     output_price_per_mtok: optionalNumber(state.outputPrice),
     cached_input_price_per_mtok: optionalNumber(state.cachedInputPrice),
+    unit_price_usd: isMediaKind(state.kind)
+      ? optionalNumber(state.unitPrice)
+      : null,
     quota_rpm: optionalNumber(state.quotaRpm),
     quota_rpd: optionalNumber(state.quotaRpd),
   }
@@ -328,8 +339,11 @@ function ModelForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="chat">Chat</SelectItem>
-              <SelectItem value="embedding">Embedding</SelectItem>
+              {MODEL_KINDS.map((kind) => (
+                <SelectItem key={kind} value={kind}>
+                  {MODEL_KIND_LABELS[kind]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </Field>
@@ -423,9 +437,21 @@ function ModelForm({
           Prices
         </FieldLegend>
         <FieldDescription>
-          USD per 1M tokens, used to compute request costs. Enter 0 for free
-          models; leave blank if you don&apos;t know the price.
+          {isMediaKind(state.kind)
+            ? `USD ${UNIT_PRICE_LABELS[state.kind]}, used to compute request costs. Token prices are optional, for models that bill by the token (like gpt-image-1).`
+            : "USD per 1M tokens, used to compute request costs. Enter 0 for free models; leave blank if you don't know the price."}
         </FieldDescription>
+        {isMediaKind(state.kind) && (
+          <div className="grid gap-4 sm:grid-cols-3">
+            <PriceField
+              id={`${uid}-price-unit`}
+              label={`Price ${UNIT_PRICE_LABELS[state.kind]}`}
+              placeholder="Unknown"
+              value={state.unitPrice}
+              onChange={(value) => set("unitPrice", value)}
+            />
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-3">
           <PriceField
             id={`${uid}-price-in`}

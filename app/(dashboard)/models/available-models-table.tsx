@@ -44,6 +44,7 @@ import { countByTier, priceTier } from "@/lib/pricing"
 
 import { CapabilityBadges } from "./model-controls"
 import { formatTokens } from "./shared"
+import type { ModelKind } from "@/lib/db/types"
 
 export interface AvailableModel {
   /** From one of the member's own providers. */
@@ -52,7 +53,7 @@ export interface AvailableModel {
   provider: string
   slug: string
   displayName: string | null
-  kind: "chat" | "embedding"
+  kind: ModelKind
   capabilities: Capability[]
   contextWindow: number | null
   inputPrice: number | null

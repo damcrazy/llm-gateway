@@ -2,7 +2,7 @@
 // server actions. Kept out of actions.ts because "use server" files may only
 // export async functions.
 
-import type { ModelKind, RouteStrategy } from "@/lib/db/types"
+import type { ModelKind, RouteKind, RouteStrategy } from "@/lib/db/types"
 import type { Capability } from "@/lib/providers/catalog"
 
 /** Mirrors the check constraint on routes.name. */
@@ -57,7 +57,7 @@ export const STRATEGY_LABELS: Record<RouteStrategy, string> = {
   round_robin: "Round robin",
 }
 
-export const KIND_LABELS: Record<ModelKind, string> = {
+export const KIND_LABELS: Record<RouteKind, string> = {
   chat: "Chat",
   embedding: "Embedding",
 }

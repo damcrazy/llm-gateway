@@ -146,6 +146,22 @@ function reportedMetadata(
   return out
 }
 
+/** A model's kind from its id, when the provider and catalogue don't say. */
+export function guessKind(modelId: string): ModelKind {
+  if (/embed/i.test(modelId)) return "embedding"
+  if (/rerank/i.test(modelId)) return "rerank"
+  if (/whisper|transcribe|speech-to-text|\bstt\b/i.test(modelId))
+    return "transcription"
+  if (/tts|text-to-speech/i.test(modelId)) return "speech"
+  if (
+    /dall-e|gpt-image|imagen|flux|stable-diffusion|sdxl|image-gen/i.test(
+      modelId
+    )
+  )
+    return "image"
+  return "chat"
+}
+
 async function describe(
   provider: Pick<ProviderRuntime, "type" | "config">,
   modelId: string,
@@ -155,9 +171,7 @@ async function describe(
   const catalogue = await lookupMetadata(metadataPrefix(provider), modelId)
   const base = catalogue ?? EMPTY
   const localFree = FREE_PRESETS.has(provider.config.preset ?? "") ? 0 : null
-  const kind =
-    reported.kind ??
-    (catalogue ? base.kind : /embed/i.test(modelId) ? "embedding" : "chat")
+  const kind = reported.kind ?? (catalogue ? base.kind : guessKind(modelId))
   return {
     model_id: modelId,
     display_name: displayName,

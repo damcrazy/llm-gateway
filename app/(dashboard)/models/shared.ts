@@ -4,6 +4,7 @@
 import { z } from "zod"
 
 import type { ModelKind } from "@/lib/db/types"
+import { MODEL_KINDS } from "@/lib/model-kinds"
 import {
   CAPABILITIES,
   type Capability,
@@ -40,6 +41,8 @@ export interface ModelListItem {
   inputPrice: number | null
   outputPrice: number | null
   cachedInputPrice: number | null
+  /** Per image / 1K characters / audio minute / search (media models). */
+  unitPrice: number | null
   quotaRpm: number | null
   quotaRpd: number | null
   /** Calls this minute / today, when a quota is set. */
@@ -88,7 +91,7 @@ export const modelFieldsSchema = z.object({
     .max(200, "Display name is too long")
     .nullable()
     .transform((value) => value || null),
-  kind: z.enum(["chat", "embedding"]),
+  kind: z.enum(MODEL_KINDS),
   capabilities: z
     .array(z.enum(CAPABILITIES))
     .transform((values) => [...new Set(values)]),
@@ -103,6 +106,7 @@ export const modelFieldsSchema = z.object({
   input_price_per_mtok: price.nullable(),
   output_price_per_mtok: price.nullable(),
   cached_input_price_per_mtok: price.nullable(),
+  unit_price_usd: price.nullable().default(null),
   quota_rpm: quotaCount,
   quota_rpd: quotaCount,
 })

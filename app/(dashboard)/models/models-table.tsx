@@ -68,6 +68,13 @@ import {
   TestModelButton,
 } from "./model-controls"
 import { setModelsEnabled } from "./actions"
+import {
+  isMediaKind,
+  MODEL_KIND_LABELS,
+  MODEL_KINDS,
+  UNIT_PRICE_LABELS,
+} from "@/lib/model-kinds"
+
 import { formatTokens, type ModelListItem } from "./shared"
 
 const ALL = "all"
@@ -209,13 +216,13 @@ export function ModelsExplorer({
         />
         <FilterSelect
           label="Kind"
-          allLabel="Chat & embedding"
+          allLabel="All kinds"
           value={filters.kind}
           onChange={(value) => set("kind", value)}
-          options={[
-            { value: "chat", label: "Chat" },
-            { value: "embedding", label: "Embedding" },
-          ]}
+          options={MODEL_KINDS.map((kind) => ({
+            value: kind,
+            label: MODEL_KIND_LABELS[kind],
+          }))}
         />
         {filtered && (
           <Button
@@ -367,8 +374,8 @@ export function ModelsTable({
                     )}
                   </TableCell>
                 )}
-                <TableCell className="text-muted-foreground capitalize">
-                  {model.kind}
+                <TableCell className="text-muted-foreground">
+                  {MODEL_KIND_LABELS[model.kind]}
                 </TableCell>
                 <TableCell>
                   <div className="min-w-40">
@@ -386,10 +393,19 @@ export function ModelsTable({
                   {formatTokens(model.contextWindow)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <ModelPrice
-                    input={model.inputPrice}
-                    output={model.outputPrice}
-                  />
+                  {isMediaKind(model.kind) && model.unitPrice != null ? (
+                    <span className="text-sm whitespace-nowrap tabular-nums">
+                      ${model.unitPrice}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        {UNIT_PRICE_LABELS[model.kind]}
+                      </span>
+                    </span>
+                  ) : (
+                    <ModelPrice
+                      input={model.inputPrice}
+                      output={model.outputPrice}
+                    />
+                  )}
                 </TableCell>
                 <TableCell>
                   <HealthBadge health={model.health} />

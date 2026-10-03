@@ -95,6 +95,8 @@ export class RequestRecorder {
   errorMessage?: string
   requestBody?: unknown
   responseBody?: unknown
+  /** Cost of a media request priced per unit (image, minute, …). */
+  unitCostUsd?: number
   /** Kinds of personal data found in the prompt (PII protection on). */
   piiFound: string[] = []
   /** Scrub personal data from stored payloads and exported traces. */
@@ -219,6 +221,7 @@ export class RequestRecorder {
   get costUsd(): number {
     // A cached answer cost nothing upstream.
     if (this.cacheStatus === "HIT") return 0
+    if (this.unitCostUsd != null) return this.unitCostUsd
     return this.served && this.usage ? costUsd(this.served, this.usage) : 0
   }
 

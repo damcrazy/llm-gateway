@@ -103,6 +103,7 @@ export async function loadModelList(
         row.cached_input_price_per_mtok == null
           ? null
           : Number(row.cached_input_price_per_mtok),
+      unitPrice: row.unit_price_usd == null ? null : Number(row.unit_price_usd),
       quotaRpm: row.quota_rpm ?? null,
       quotaRpd: row.quota_rpd ?? null,
       quotaUsed:

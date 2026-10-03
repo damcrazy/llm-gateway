@@ -66,6 +66,7 @@ describe("scrubText", () => {
       "Use the @latest tag and user@localhost",
       "ISBN 978-3-16-148410-0",
       "Call 555-1234",
+      "Version 1.415.555.2671.3",
     ]) {
       expect(scrub(text)).toEqual({ text, found: [] })
     }

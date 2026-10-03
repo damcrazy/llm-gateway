@@ -13,8 +13,10 @@ import { ClientAbortError, GatewayError, toUpstreamError } from "./errors"
 import {
   executeChat,
   executeEmbeddings,
+  executeMedia,
   finishJson,
   observeChat,
+  protectTexts,
 } from "./execute"
 import { checkAfterRequest } from "./alerts"
 import { exportTrace } from "./export"
@@ -34,8 +36,8 @@ import {
   chunksToAnthropicEvents,
   type AnthropicRequest,
 } from "./translate/anthropic"
-import type { ChatChunk, ChatRequest, EmbeddingsRequest } from "./types"
-import { estimateRequestTokens } from "./usage"
+import type { ChatChunk, ChatRequest, EmbeddingsRequest, Usage } from "./types"
+import { estimateRequestTokens, estimateTokens } from "./usage"
 
 type Surface = "openai" | "anthropic"
 
@@ -450,6 +452,301 @@ export async function handleEmbeddings(request: Request): Promise<Response> {
       recorder,
     })
     return Response.json(response, { headers: gatewayHeaders(recorder, model) })
+  } catch (error) {
+    return errorResponse(error, recorder, "openai")
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Images, speech, transcription and rerank (OpenAI-compatible providers)
+// ---------------------------------------------------------------------------
+
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+function requireModel(value: unknown): string {
+  const model = typeof value === "string" ? value.trim() : ""
+  if (!model)
+    throw new GatewayError(400, "`model` is required.", "invalid_request")
+  return model
+}
+
+/** Token usage some media APIs report (gpt-image, gpt-4o-transcribe, rerankers). */
+function mediaUsage(raw: unknown): Usage | undefined {
+  const usage = raw as
+    | {
+        input_tokens?: number
+        output_tokens?: number
+        prompt_tokens?: number
+        total_tokens?: number
+      }
+    | undefined
+  if (!usage || typeof usage !== "object") return undefined
+  const input = usage.input_tokens ?? usage.prompt_tokens ?? usage.total_tokens
+  const output = usage.output_tokens ?? 0
+  if (typeof input !== "number") return undefined
+  return {
+    inputTokens: input,
+    outputTokens: output,
+    cachedTokens: 0,
+    reasoningTokens: 0,
+    estimated: false,
+  }
+}
+
+/** Priced per unit when the model has a unit price; else by tokens, if any. */
+function chargeUnits(
+  recorder: RequestRecorder,
+  model: ModelRuntime,
+  units: number | null
+) {
+  if (model.unit_price_usd != null && units != null)
+    recorder.unitCostUsd = Number(model.unit_price_usd) * units
+}
+
+export async function handleImages(request: Request): Promise<Response> {
+  const recorder = new RequestRecorder("images", request)
+  try {
+    const auth = await begin(request, recorder)
+    const body = await readJson<Record<string, unknown>>(request)
+    if (!body || typeof body.prompt !== "string" || !body.prompt.trim())
+      throw new GatewayError(400, "`prompt` is required.", "invalid_request")
+    captureRequestContext(recorder, request, body)
+    const [prompt] = protectTexts(auth.app, [body.prompt], recorder)
+    if (recorder.logPayloads) recorder.requestBody = { ...body, prompt }
+    const { response, model } = await executeMedia({
+      kind: "image",
+      path: "images/generations",
+      model: requireModel(body.model),
+      app: auth.app,
+      policy: auth.owner.policy,
+      body: (modelId) => JSON.stringify({ ...body, prompt, model: modelId }),
+      signal: request.signal,
+      recorder,
+    })
+    const result = (await response.json()) as {
+      created?: number
+      data?: unknown[]
+      usage?: unknown
+    }
+    const count = Array.isArray(result.data)
+      ? result.data.length
+      : Number(body.n ?? 1)
+    recorder.usage = mediaUsage(result.usage)
+    chargeUnits(recorder, model, count)
+    // Images (often base64) aren't stored; just how many there were.
+    if (recorder.logPayloads)
+      recorder.responseBody = { created: result.created, images: count }
+    recorder.finish()
+    return Response.json(result, { headers: gatewayHeaders(recorder, model) })
+  } catch (error) {
+    return errorResponse(error, recorder, "openai")
+  }
+}
+
+export async function handleSpeech(request: Request): Promise<Response> {
+  const recorder = new RequestRecorder("speech", request)
+  try {
+    const auth = await begin(request, recorder)
+    const body = await readJson<Record<string, unknown>>(request)
+    if (!body || typeof body.input !== "string" || !body.input.trim())
+      throw new GatewayError(400, "`input` is required.", "invalid_request")
+    captureRequestContext(recorder, request, body)
+    const [input] = protectTexts(auth.app, [body.input], recorder)
+    if (recorder.logPayloads) recorder.requestBody = { ...body, input }
+    const { response, model } = await executeMedia({
+      kind: "speech",
+      path: "audio/speech",
+      model: requireModel(body.model),
+      app: auth.app,
+      policy: auth.owner.policy,
+      body: (modelId) => JSON.stringify({ ...body, input, model: modelId }),
+      signal: request.signal,
+      recorder,
+    })
+    recorder.usage = {
+      inputTokens: estimateTokens(input),
+      outputTokens: 0,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+      estimated: true,
+    }
+    chargeUnits(recorder, model, input.length / 1000)
+    // The audio streams straight through once the provider starts sending.
+    recorder.finish()
+    return new Response(response.body, {
+      headers: {
+        "content-type":
+          response.headers.get("content-type") ?? "application/octet-stream",
+        ...gatewayHeaders(recorder, model),
+      },
+    })
+  } catch (error) {
+    return errorResponse(error, recorder, "openai")
+  }
+}
+
+export async function handleTranscription(
+  request: Request,
+  path: "audio/transcriptions" | "audio/translations"
+): Promise<Response> {
+  const recorder = new RequestRecorder(
+    path === "audio/translations" ? "translations" : "transcriptions",
+    request
+  )
+  try {
+    const auth = await begin(request, recorder)
+    if (!request.headers.get("content-type")?.includes("multipart/form-data"))
+      throw new GatewayError(
+        400,
+        "Send the audio as multipart/form-data with `file` and `model`.",
+        "invalid_request"
+      )
+    const length = Number(request.headers.get("content-length") ?? 0)
+    if (length > MAX_AUDIO_BYTES)
+      throw new GatewayError(
+        413,
+        "Audio files can be up to 25 MB.",
+        "request_too_large"
+      )
+    const form = await request.formData().catch(() => {
+      throw new GatewayError(
+        400,
+        "Couldn't read the form data.",
+        "invalid_request"
+      )
+    })
+    const file = form.get("file")
+    if (!(file instanceof File))
+      throw new GatewayError(400, "`file` is required.", "invalid_request")
+    if (file.size > MAX_AUDIO_BYTES)
+      throw new GatewayError(
+        413,
+        "Audio files can be up to 25 MB.",
+        "request_too_large"
+      )
+    const fields: Record<string, string> = {}
+    for (const [key, value] of form) {
+      if (typeof value === "string") fields[key] = value.slice(0, 2000)
+    }
+    captureRequestContext(recorder, request, fields)
+    if (recorder.logPayloads)
+      recorder.requestBody = {
+        ...fields,
+        file: { name: file.name, type: file.type, bytes: file.size },
+      }
+    const { response, model } = await executeMedia({
+      kind: "transcription",
+      path,
+      model: requireModel(fields.model),
+      app: auth.app,
+      policy: auth.owner.policy,
+      body: (modelId) => {
+        const upstream = new FormData()
+        for (const [key, value] of form) {
+          if (key !== "model") upstream.append(key, value)
+        }
+        upstream.append("model", modelId)
+        return upstream
+      },
+      signal: request.signal,
+      recorder,
+    })
+    const contentType =
+      response.headers.get("content-type") ?? "application/json"
+    const text = await response.text()
+    let minutes: number | null = null
+    if (contentType.includes("json")) {
+      try {
+        const result = JSON.parse(text) as {
+          duration?: number
+          usage?: { seconds?: number }
+        }
+        recorder.usage = mediaUsage(result.usage)
+        const seconds = result.usage?.seconds ?? result.duration
+        if (typeof seconds === "number") minutes = seconds / 60
+      } catch {
+        // Not JSON after all; pass it through.
+      }
+    }
+    chargeUnits(recorder, model, minutes)
+    if (recorder.logPayloads) recorder.responseBody = text
+    recorder.finish()
+    return new Response(text, {
+      headers: {
+        "content-type": contentType,
+        ...gatewayHeaders(recorder, model),
+      },
+    })
+  } catch (error) {
+    return errorResponse(error, recorder, "openai")
+  }
+}
+
+export async function handleRerank(request: Request): Promise<Response> {
+  const recorder = new RequestRecorder("rerank", request)
+  try {
+    const auth = await begin(request, recorder)
+    const body = await readJson<Record<string, unknown>>(request)
+    const documents = body?.documents
+    if (!body || typeof body.query !== "string" || !body.query.trim())
+      throw new GatewayError(400, "`query` is required.", "invalid_request")
+    if (!Array.isArray(documents) || !documents.length)
+      throw new GatewayError(
+        400,
+        "`documents` must be a non-empty array.",
+        "invalid_request"
+      )
+    captureRequestContext(recorder, request, body)
+    // Documents are strings or objects with a `text` field.
+    const texts = documents.map((doc) =>
+      typeof doc === "string"
+        ? doc
+        : typeof (doc as { text?: unknown })?.text === "string"
+          ? (doc as { text: string }).text
+          : null
+    )
+    const [query, ...scrubbed] = protectTexts(
+      auth.app,
+      [body.query, ...texts.map((text) => text ?? "")],
+      recorder
+    )
+    const docs = documents.map((doc, index) =>
+      texts[index] === null
+        ? doc
+        : typeof doc === "string"
+          ? scrubbed[index]
+          : { ...(doc as object), text: scrubbed[index] }
+    )
+    if (recorder.logPayloads)
+      recorder.requestBody = { ...body, query, documents: docs }
+    const { response, model } = await executeMedia({
+      kind: "rerank",
+      path: "rerank",
+      model: requireModel(body.model),
+      app: auth.app,
+      policy: auth.owner.policy,
+      body: (modelId) =>
+        JSON.stringify({ ...body, query, documents: docs, model: modelId }),
+      signal: request.signal,
+      recorder,
+    })
+    const result = (await response.json()) as {
+      usage?: unknown
+      meta?: { billed_units?: { search_units?: number } }
+    }
+    recorder.usage = mediaUsage(result.usage) ?? {
+      inputTokens: estimateTokens(
+        [query, ...texts.map((text) => text ?? "")].join(" ")
+      ),
+      outputTokens: 0,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+      estimated: true,
+    }
+    chargeUnits(recorder, model, result.meta?.billed_units?.search_units ?? 1)
+    if (recorder.logPayloads) recorder.responseBody = result
+    recorder.finish()
+    return Response.json(result, { headers: gatewayHeaders(recorder, model) })
   } catch (error) {
     return errorResponse(error, recorder, "openai")
   }

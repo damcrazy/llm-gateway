@@ -2,6 +2,7 @@ import "server-only"
 
 import { canUseModel, describePolicy, type AccessPolicy } from "@/lib/access"
 import type { AppBucket, GatewayApp, ModelKind } from "@/lib/db/types"
+import { ENDPOINT_FOR_KIND, MODEL_KIND_LABELS } from "@/lib/model-kinds"
 import { CAPABILITY_LABELS } from "@/lib/providers/catalog"
 
 import type { GatewaySnapshot, ModelRuntime, RouteRuntime } from "./config"
@@ -153,6 +154,15 @@ export function resolveModel(
     (model) => model.enabled && model.provider.enabled && model.kind === kind
   )
   if (!usable.length) {
+    const other = targets[0]
+    if (other && targets.every((model) => model.kind !== kind)) {
+      const label = MODEL_KIND_LABELS[other.kind].toLowerCase()
+      throw new GatewayError(
+        400,
+        `'${name}' is ${/^[aeiou]/.test(label) ? "an" : "a"} ${label} model; call it at ${ENDPOINT_FOR_KIND[other.kind]}.`,
+        "wrong_endpoint"
+      )
+    }
     throw new GatewayError(
       503,
       `No enabled ${kind} models are available for '${name}'.`,

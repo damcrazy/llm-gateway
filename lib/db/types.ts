@@ -38,6 +38,8 @@ export interface AppRow {
   tpm_limit: number | null
   /** What to do with personal data and secrets found in prompts. */
   pii_mode: PiiMode
+  /** Check JSON answers against the requested format; fail over if not. */
+  json_guard: boolean
   log_payloads: boolean
   /** The member who owns this app. */
   owner_email: string
@@ -135,7 +137,11 @@ export interface ProviderSecretRow {
   updated_at: string
 }
 
-export type ModelKind = "chat" | "embedding"
+/** Models called through their own endpoint (images, audio, rerank). */
+export type MediaKind = "image" | "speech" | "transcription" | "rerank"
+export type ModelKind = "chat" | "embedding" | MediaKind
+/** Routes (admin-defined fallback chains) are for chat or embedding models. */
+export type RouteKind = "chat" | "embedding"
 
 export interface ModelRow {
   id: string
@@ -156,6 +162,8 @@ export interface ModelRow {
   input_price_per_mtok: number | null
   output_price_per_mtok: number | null
   cached_input_price_per_mtok: number | null
+  /** Per image / 1K characters / audio minute / search, for media models. */
+  unit_price_usd: number | null
   created_at: string
   updated_at: string
 }
@@ -177,7 +185,7 @@ export interface RouteRow {
   id: string
   name: string
   description: string | null
-  kind: ModelKind
+  kind: RouteKind
   strategy: RouteStrategy
   max_attempts: number
   timeout_ms: number

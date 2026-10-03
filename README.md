@@ -186,6 +186,29 @@ Response headers `x-gateway-model`, `x-gateway-provider`, `x-gateway-attempts` a
 - Supported: text, images and files (as data or URLs), function tools, `text.format` (JSON schema), `reasoning.effort` and streaming.
 - Built-in tools (web search, file search, code interpreter) aren't supported.
 
+### Images, audio and rerank
+
+Models can also be of kind **Image**, **Speech**, **Transcription** or **Rerank**. Set the kind when adding a model; discovery guesses it from the id.
+
+| Endpoint | Kind | Priced per |
+| --- | --- | --- |
+| `POST /v1/images/generations` | Image | image |
+| `POST /v1/audio/speech` | Speech | 1K characters |
+| `POST /v1/audio/transcriptions`, `/v1/audio/translations` | Transcription | minute (when the response has the duration) |
+| `POST /v1/rerank` (`query` + `documents`, Cohere/Jina style) | Rerank | search |
+
+- They work with OpenAI-compatible and Azure providers, with the same buckets, failover, limits, logs and PII protection as chat.
+- Token prices are used instead when a provider reports tokens (e.g. gpt-image-1).
+- Generated images and uploaded audio are never stored, even with payload logging; only counts and sizes are.
+
+### Structured output
+
+Turn on **Check structured output** in an app's Settings to have the gateway check answers to `response_format` json_object / json_schema requests (non-streaming).
+- Invalid JSON, or JSON that doesn't match the schema, counts as a failed attempt: the next model in the bucket answers, and the same model gets one more try if it's the last.
+- Answers wrapped in ```json fences are unwrapped.
+- If no model gives a valid answer, the client gets a 502 `invalid_structured_output`.
+- These failures don't affect a model's health.
+
 ### Limits, privacy and tags
 
 **Limits** (app **Settings**, and **Limits** on each API key):

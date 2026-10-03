@@ -59,6 +59,10 @@ export function decideOnFailure(
 
   if (error.kind === "config")
     return { failover: true, cooldownSeconds: 300, transient: false }
+  // An answer that failed the structured-output guard: try elsewhere, and
+  // this model once more, without counting it against the model's health.
+  if (error.kind === "output")
+    return { failover: true, cooldownSeconds: 0, transient: true }
   if (status == null)
     return { failover: true, cooldownSeconds: backoff, transient: true }
   if (status === 429) {

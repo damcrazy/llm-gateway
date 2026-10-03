@@ -25,7 +25,8 @@ export class UpstreamError extends Error {
     readonly options: {
       retryAfterMs?: number
       body?: string
-      kind?: "http" | "network" | "timeout" | "config" | "stream"
+      /** "output": the answer failed the structured-output guard. */
+      kind?: "http" | "network" | "timeout" | "config" | "stream" | "output"
     } = {}
   ) {
     super(message)

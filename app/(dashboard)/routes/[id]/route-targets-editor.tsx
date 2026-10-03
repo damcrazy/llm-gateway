@@ -54,7 +54,7 @@ import {
   ItemTitle,
 } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
-import type { ModelKind, RouteStrategy } from "@/lib/db/types"
+import type { RouteKind, RouteStrategy } from "@/lib/db/types"
 import { formatPrice } from "@/lib/format"
 import { priceTier } from "@/lib/pricing"
 import {
@@ -87,7 +87,7 @@ export function RouteTargetsEditor({
   initialTargetIds,
 }: {
   routeId: string
-  routeKind: ModelKind
+  routeKind: RouteKind
   strategy: RouteStrategy
   maxAttempts: number
   models: TargetModel[]
@@ -307,7 +307,7 @@ function TargetItem({
   model: TargetModel
   index: number
   isLast: boolean
-  routeKind: ModelKind
+  routeKind: RouteKind
   disabled: boolean
   onMove: (delta: -1 | 1) => void
   onRemove: () => void

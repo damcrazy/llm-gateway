@@ -16,7 +16,12 @@ import type {
   EmbeddingsRequest,
   EmbeddingsResponse,
 } from "../types"
-import type { AdapterContext, ChatResult, ProviderAdapter } from "./types"
+import type {
+  AdapterContext,
+  ChatResult,
+  MediaPath,
+  ProviderAdapter,
+} from "./types"
 
 // Pass-through adapter for OpenAI-compatible APIs (OpenAI, Groq, OpenRouter,
 // DeepSeek, Mistral, Together, Ollama, vLLM, …) and Azure OpenAI. The request
@@ -25,7 +30,7 @@ import type { AdapterContext, ChatResult, ProviderAdapter } from "./types"
 
 function endpoint(
   provider: ProviderRuntime,
-  path: "chat/completions" | "embeddings",
+  path: "chat/completions" | "embeddings" | MediaPath,
   modelId: string
 ) {
   const base = (provider.config.baseUrl ?? "").trim().replace(/\/+$/, "")
@@ -180,6 +185,24 @@ export const openAIAdapter: ProviderAdapter = {
     })
     if (!response.ok) throw await upstreamErrorFromResponse(response)
     return (await response.json()) as EmbeddingsResponse
+  },
+
+  async media(path, body, ctx): Promise<Response> {
+    const { url, headers } = endpoint(
+      ctx.model.provider,
+      path,
+      ctx.model.model_id
+    )
+    // fetch sets the multipart boundary itself.
+    if (body instanceof FormData) delete headers["Content-Type"]
+    const response = await fetchFor(ctx.model.provider)(url, {
+      method: "POST",
+      headers,
+      body,
+      signal: ctx.signal,
+    })
+    if (!response.ok) throw await upstreamErrorFromResponse(response)
+    return response
   },
 }
 

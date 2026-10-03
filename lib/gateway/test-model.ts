@@ -1,5 +1,7 @@
 import "server-only"
 
+import { ENDPOINT_FOR_KIND } from "@/lib/model-kinds"
+
 import { adapterFor } from "./adapters"
 import { getSnapshot, invalidateGatewayConfig } from "./config"
 import { toUpstreamError } from "./errors"
@@ -22,6 +24,15 @@ export async function testModel(modelId: string): Promise<ModelTestResult> {
   const snapshot = await getSnapshot()
   const model = snapshot.models.get(modelId)
   if (!model) return { ok: false, latencyMs: 0, error: "Model not found" }
+
+  if (model.kind !== "chat" && model.kind !== "embedding") {
+    // Generating an image or audio costs money; test these from an app.
+    return {
+      ok: false,
+      latencyMs: 0,
+      error: `Testing ${model.kind} models here isn't supported; call ${ENDPOINT_FOR_KIND[model.kind]} with an app key instead.`,
+    }
+  }
 
   const adapter = adapterFor(model.provider.type)
   const signal = AbortSignal.timeout(60_000)

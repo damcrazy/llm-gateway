@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
-import type { ModelKind, RouteStrategy } from "@/lib/db/types"
+import type { RouteKind, RouteStrategy } from "@/lib/db/types"
 
 import { createRoute, setRouteEnabled } from "./actions"
 import { KIND_LABELS, routeNameError, STRATEGY_OPTIONS } from "./shared"
@@ -46,7 +46,7 @@ export function NewRouteDialog({
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [kind, setKind] = useState<ModelKind>("chat")
+  const [kind, setKind] = useState<RouteKind>("chat")
   const [strategy, setStrategy] = useState<RouteStrategy>("fallback")
   const [touched, setTouched] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -137,13 +137,13 @@ export function NewRouteDialog({
               <FieldLabel htmlFor="route-kind">Kind</FieldLabel>
               <Select
                 value={kind}
-                onValueChange={(value) => setKind(value as ModelKind)}
+                onValueChange={(value) => setKind(value as RouteKind)}
               >
                 <SelectTrigger id="route-kind" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(KIND_LABELS) as ModelKind[]).map((value) => (
+                  {(Object.keys(KIND_LABELS) as RouteKind[]).map((value) => (
                     <SelectItem key={value} value={value}>
                       {KIND_LABELS[value]}
                     </SelectItem>

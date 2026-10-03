@@ -1,6 +1,6 @@
 // Shapes shared by the app's Models tab (server page -> client components).
 
-import type { BucketStrategy } from "@/lib/db/types"
+import type { BucketStrategy, ModelKind } from "@/lib/db/types"
 import type { Capability } from "@/lib/providers/catalog"
 
 export type { BucketStrategy }
@@ -61,7 +61,7 @@ export interface BucketModel {
   provider: string
   /** From the app owner's own (private) provider. */
   own: boolean
-  kind: "chat" | "embedding"
+  kind: ModelKind
   capabilities: Capability[]
   contextWindow: number | null
   inputPrice: number | null
