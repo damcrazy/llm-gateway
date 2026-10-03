@@ -20,6 +20,7 @@ import {
 } from "./execute"
 import { checkAfterRequest } from "./alerts"
 import { exportTrace } from "./export"
+import { parsePromptRef } from "./prompts"
 import { RequestRecorder } from "./recorder"
 import { captureRequestContext } from "./tags"
 import {
@@ -222,22 +223,31 @@ export async function handleChatCompletions(
   const recorder = new RequestRecorder("chat.completions", request)
   try {
     const auth = await begin(request, recorder)
-    const body = await readJson<ChatRequest>(request)
-    if (!body || !Array.isArray(body.messages) || !body.messages.length) {
+    const raw = await readJson<ChatRequest>(request)
+    // `prompt` (a library prompt) is the gateway's; providers never see it.
+    const { prompt: promptField, ...body } = raw ?? ({} as ChatRequest)
+    const prompt = parsePromptRef(promptField)
+    if (
+      !raw ||
+      (body.messages !== undefined && !Array.isArray(body.messages)) ||
+      (!prompt && !body.messages?.length)
+    ) {
       throw new GatewayError(
         400,
         "`messages` must be a non-empty array.",
         "invalid_request"
       )
     }
+    body.messages ??= []
     captureRequestContext(recorder, request, body)
-    if (recorder.logPayloads) recorder.requestBody = body
+    if (recorder.logPayloads) recorder.requestBody = raw
 
     const execution = await executeChat({
       request: body,
       app: auth.app,
       policy: auth.owner.policy,
       cache: cacheFor(auth.app, request),
+      prompt,
       signal: request.signal,
       recorder,
     })
@@ -297,9 +307,13 @@ export async function handleResponses(request: Request): Promise<Response> {
   try {
     const auth = await begin(request, recorder)
     const body = await readJson<ResponsesRequest>(request)
+    const prompt = parsePromptRef(body?.prompt)
     if (
       !body ||
-      (typeof body.input !== "string" && !Array.isArray(body.input))
+      (body.input !== undefined &&
+        typeof body.input !== "string" &&
+        !Array.isArray(body.input)) ||
+      (!prompt && body.input === undefined)
     ) {
       throw new GatewayError(
         400,
@@ -307,15 +321,17 @@ export async function handleResponses(request: Request): Promise<Response> {
         "invalid_request"
       )
     }
+    body.input ??= []
     captureRequestContext(recorder, request, body)
     if (recorder.logPayloads) recorder.requestBody = body
 
-    const chatRequest = responsesToChat(body)
+    const chatRequest = responsesToChat(body, { allowEmpty: Boolean(prompt) })
     const execution = await executeChat({
       request: chatRequest,
       app: auth.app,
       policy: auth.owner.policy,
       cache: cacheFor(auth.app, request),
+      prompt,
       signal: request.signal,
       recorder,
     })
@@ -358,13 +374,19 @@ export async function handleMessages(request: Request): Promise<Response> {
   try {
     const auth = await begin(request, recorder)
     const body = await readJson<AnthropicRequest>(request)
-    if (!body || !Array.isArray(body.messages) || !body.messages.length) {
+    const prompt = parsePromptRef((body as { prompt?: unknown } | null)?.prompt)
+    if (
+      !body ||
+      (body.messages !== undefined && !Array.isArray(body.messages)) ||
+      (!prompt && !body.messages?.length)
+    ) {
       throw new GatewayError(
         400,
         "`messages` must be a non-empty array.",
         "invalid_request"
       )
     }
+    body.messages ??= []
     captureRequestContext(recorder, request, body)
     if (recorder.logPayloads) recorder.requestBody = body
 
@@ -374,6 +396,7 @@ export async function handleMessages(request: Request): Promise<Response> {
       app: auth.app,
       policy: auth.owner.policy,
       cache: cacheFor(auth.app, request),
+      prompt,
       signal: request.signal,
       recorder,
     })

@@ -95,6 +95,9 @@ export class RequestRecorder {
   errorMessage?: string
   requestBody?: unknown
   responseBody?: unknown
+  /** The library prompt the request used, if any. */
+  promptId: string | null = null
+  promptVersion: number | null = null
   /** Cost of a media request priced per unit (image, minute, …). */
   unitCostUsd?: number
   /** Kinds of personal data found in the prompt (PII protection on). */
@@ -274,6 +277,8 @@ export class RequestRecorder {
       tags: this.tags.length ? this.tags : null,
       end_user: this.endUser,
       metadata: this.metadata,
+      prompt_id: this.promptId,
+      prompt_version: this.promptVersion,
     })
     if (error) {
       console.error("[gateway] failed to write request log:", error.message)

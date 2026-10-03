@@ -6,6 +6,7 @@ import {
   ActivityIcon,
   BellIcon,
   BoxesIcon,
+  ColumnsIcon,
   ChevronsUpDownIcon,
   CpuIcon,
   GaugeIcon,
@@ -13,6 +14,7 @@ import {
   HistoryIcon,
   LayoutDashboardIcon,
   LogOutIcon,
+  MessageSquareTextIcon,
   RouteIcon,
   ScrollTextIcon,
   ServerIcon,
@@ -87,6 +89,12 @@ const NAV: {
         icon: FlaskConicalIcon,
         access: "member",
       },
+      {
+        title: "Compare",
+        href: "/compare",
+        icon: ColumnsIcon,
+        access: "member",
+      },
     ],
   },
   {
@@ -106,6 +114,12 @@ const NAV: {
         access: "member",
       },
       { title: "Routes", href: "/routes", icon: RouteIcon, access: "admin" },
+      {
+        title: "Prompts",
+        href: "/prompts",
+        icon: MessageSquareTextIcon,
+        access: "member",
+      },
       {
         title: "Tracing",
         href: "/tracing",

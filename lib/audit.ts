@@ -17,6 +17,7 @@ export type AuditTargetType =
   | "account"
   | "alerts"
   | "tracing"
+  | "prompt"
 
 export interface AuditTarget {
   type: AuditTargetType

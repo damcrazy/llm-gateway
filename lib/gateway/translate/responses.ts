@@ -148,7 +148,11 @@ function textOf(content: string | InputPart[]): string {
     .join("")
 }
 
-export function responsesToChat(body: ResponsesRequest): ChatRequest {
+export function responsesToChat(
+  body: ResponsesRequest,
+  /** A library prompt supplies the messages, so `input` may be empty. */
+  { allowEmpty = false }: { allowEmpty?: boolean } = {}
+): ChatRequest {
   if (body.previous_response_id) {
     throw invalid(
       "previous_response_id isn't supported: this gateway doesn't store responses. Send the whole conversation in `input` (store: false)."
@@ -222,7 +226,7 @@ export function responsesToChat(body: ResponsesRequest): ChatRequest {
       throw invalid(`Input item type '${type}' isn't supported.`)
     }
   }
-  if (!messages.some((message) => message.role !== "system")) {
+  if (!allowEmpty && !messages.some((message) => message.role !== "system")) {
     throw invalid("`input` must contain at least one message.")
   }
 

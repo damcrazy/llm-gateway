@@ -5,11 +5,13 @@ import Link from "next/link"
 import {
   ArrowRightIcon,
   CircleAlertIcon,
+  ColumnsIcon,
   RotateCcwIcon,
   ShieldCheckIcon,
   SnowflakeIcon,
 } from "lucide-react"
 
+import { Button } from "@/components/animate-ui/components/buttons/button"
 import { CopyButton } from "@/components/animate-ui/components/buttons/copy"
 import {
   Sheet,
@@ -49,6 +51,14 @@ import { cn } from "@/lib/utils"
 
 import type { LogView } from "./_lib"
 import { getRequestPayload, type RequestPayload } from "./actions"
+
+/** Endpoints whose stored requests can be replayed in Compare. */
+const REPLAYABLE = new Set([
+  "chat.completions",
+  "messages",
+  "responses",
+  "playground",
+])
 
 type PayloadState =
   | { status: "loading" }
@@ -325,6 +335,18 @@ function LogDetails({
         <SheetDescription>
           {log.timeLabel} · {log.appName}
         </SheetDescription>
+        {REPLAYABLE.has(log.endpoint) &&
+          payload.status === "loaded" &&
+          payload.data?.request != null && (
+            <div>
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/compare?request=${log.id}`} onClick={onNavigate}>
+                  <ColumnsIcon />
+                  Replay in Compare
+                </Link>
+              </Button>
+            </div>
+          )}
       </SheetHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

@@ -10,6 +10,7 @@ export const AREAS = [
   { value: "account", label: "Sign-in & security" },
   { value: "alerts", label: "Alerts" },
   { value: "tracing", label: "Tracing" },
+  { value: "prompt", label: "Prompts" },
 ] as const
 
 export type AuditArea = (typeof AREAS)[number]["value"]

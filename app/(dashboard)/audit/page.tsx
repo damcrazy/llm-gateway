@@ -56,6 +56,8 @@ function targetHref(row: AuditRow): string | null {
       return `/apps/${row.target_id}`
     case "provider":
       return `/providers/${row.target_id}`
+    case "prompt":
+      return `/prompts/${row.target_id}`
     default:
       return null
   }

@@ -23,6 +23,7 @@ import {
 } from "./errors"
 import { decideOnFailure, recordFailure, recordSuccess } from "./health"
 import { checkStructuredOutput, structuredFormat } from "./json-guard"
+import { applyPrompt, loadPrompt, type PromptRef } from "./prompts"
 import { describePii, scrubChatRequest, scrubText, type PiiKind } from "./pii"
 import { noteProviderCall } from "./quota"
 import type { RequestRecorder } from "./recorder"
@@ -473,11 +474,33 @@ export async function executeChat(options: {
   privateOwner?: string | null
   /** The app's response cache, when it has one. */
   cache?: CacheOptions
+  /** A prompt from the library to put first (the request's `prompt`). */
+  prompt?: PromptRef | null
   signal: AbortSignal
   recorder: RequestRecorder
 }): Promise<ChatExecution> {
   const { recorder } = options
-  const request = protectChat(options.app, options.request, recorder)
+  let base = options.request
+  if (options.prompt) {
+    const owner = options.app?.owner_email ?? options.privateOwner
+    if (!owner)
+      throw new GatewayError(
+        400,
+        "Prompts from the library need an app (its owner's prompts are used).",
+        "invalid_prompt"
+      )
+    const template = await loadPrompt(owner, options.prompt)
+    base = applyPrompt(base, template, options.prompt.variables)
+    recorder.promptId = template.promptId
+    recorder.promptVersion = template.version
+  }
+  if (!base.messages?.length)
+    throw new GatewayError(
+      400,
+      "`messages` must be a non-empty array.",
+      "invalid_request"
+    )
+  const request = protectChat(options.app, base, recorder)
   recorder.requestedModel = request.model || undefined
   recorder.stream = Boolean(request.stream)
   const snapshot = await getSnapshot()

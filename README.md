@@ -186,6 +186,26 @@ Response headers `x-gateway-model`, `x-gateway-provider`, `x-gateway-attempts` a
 - Supported: text, images and files (as data or URLs), function tools, `text.format` (JSON schema), `reasoning.effort` and streaming.
 - Built-in tools (web search, file search, code interpreter) aren't supported.
 
+### Prompt library and Compare
+
+**Prompts** (the **Prompts** page) are versioned templates with `{{variables}}`.
+- Apps call them by slug instead of sending the whole prompt; the template's messages come first, then the request's own:
+
+```json
+{ "prompt": { "id": "support-reply", "version": 2, "variables": { "name": "Jane" } },
+  "messages": [{ "role": "user", "content": "Where is my order?" }] }
+```
+
+- Works on `/v1/chat/completions`, `/v1/responses` (OpenAI's own `prompt` field) and `/v1/messages`.
+- Without `version`, the published version is used, or the latest if none is published.
+- Without `model`, the version's default model is used.
+- Missing variables are a 400 that lists them. Prompts belong to a person, so only their apps can use them.
+- Logs record which prompt and version each request used.
+
+**Compare** (the **Compare** page) sends the same conversation to up to four models, buckets or routes at once, through the real gateway, and shows the answers side by side with latency, tokens and cost.
+- Open a logged request there with **Replay in Compare** (it needs stored payloads).
+- Open a prompt there with **Try in Compare**.
+
 ### Images, audio and rerank
 
 Models can also be of kind **Image**, **Speech**, **Transcription** or **Rerank**. Set the kind when adding a model; discovery guesses it from the id.
