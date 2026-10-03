@@ -1,6 +1,7 @@
 import "server-only"
 
 import type { ModelHealthRow, ModelRow, ProviderRow } from "@/lib/db/types"
+import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 import type { ModelHealthSummary, ModelListItem } from "./shared"
@@ -38,11 +39,23 @@ export async function loadModelList(
     providerQuery = providerQuery.eq("id", options.providerId)
   if (options.sharedOnly) providerQuery = providerQuery.is("owner_email", null)
 
-  const [modelsResult, providersResult, healthResult] = await Promise.all([
-    modelQuery,
-    providerQuery,
-    supabase.from("model_health").select("*"),
-  ])
+  const [modelsResult, providersResult, healthResult, quotaResult] =
+    await Promise.all([
+      modelQuery,
+      providerQuery,
+      supabase.from("model_health").select("*"),
+      supabaseAdmin().rpc("current_quota_usage"),
+    ])
+  const quotaUsage = new Map(
+    (
+      (quotaResult.data ?? []) as {
+        scope: string
+        scope_id: string
+        period: string
+        count: number
+      }[]
+    ).map((row) => [`${row.scope}:${row.scope_id}:${row.period}`, row.count])
+  )
 
   const providers = (providersResult.data ?? []) as ProviderSummary[]
   const providerById = new Map(
@@ -90,6 +103,15 @@ export async function loadModelList(
         row.cached_input_price_per_mtok == null
           ? null
           : Number(row.cached_input_price_per_mtok),
+      quotaRpm: row.quota_rpm ?? null,
+      quotaRpd: row.quota_rpd ?? null,
+      quotaUsed:
+        row.quota_rpm || row.quota_rpd
+          ? {
+              minute: quotaUsage.get(`model:${row.id}:minute`) ?? 0,
+              day: quotaUsage.get(`model:${row.id}:day`) ?? 0,
+            }
+          : null,
       health: summarizeHealth(healthByModel.get(row.id), now),
     })
   }

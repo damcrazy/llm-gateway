@@ -350,6 +350,7 @@ export function ModelsTable({
                       {model.displayName}
                     </div>
                   )}
+                  {model.quotaUsed && <QuotaLine model={model} />}
                 </TableCell>
                 {showProvider && (
                   <TableCell>
@@ -506,5 +507,35 @@ function BulkAction({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+/** "Quota 3/15 a min · 340/1,500 today", amber once a cap is reached. */
+function QuotaLine({ model }: { model: ModelListItem }) {
+  const used = model.quotaUsed
+  if (!used) return null
+  const parts: { text: string; full: boolean }[] = []
+  if (model.quotaRpm)
+    parts.push({
+      text: `${used.minute}/${model.quotaRpm.toLocaleString()} a min`,
+      full: used.minute >= model.quotaRpm,
+    })
+  if (model.quotaRpd)
+    parts.push({
+      text: `${used.day.toLocaleString()}/${model.quotaRpd.toLocaleString()} today`,
+      full: used.day >= model.quotaRpd,
+    })
+  const full = parts.some((part) => part.full)
+  return (
+    <div
+      className={
+        full
+          ? "text-xs font-medium text-amber-700 dark:text-amber-400"
+          : "text-xs text-muted-foreground"
+      }
+    >
+      Quota {parts.map((part) => part.text).join(" · ")}
+      {full && " · skipped until it resets"}
+    </div>
   )
 }

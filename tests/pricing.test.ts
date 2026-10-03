@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
+import { usageFromChat } from "@/lib/gateway/usage"
 import { countByTier, priceTier } from "@/lib/pricing"
 
 describe("priceTier", () => {
@@ -28,5 +29,38 @@ describe("priceTier", () => {
       paid: 1,
       unknown: 1,
     })
+  })
+})
+
+describe("usageFromChat", () => {
+  test("counts thinking tokens hidden in total_tokens as output", () => {
+    // Gemini (OpenAI-compatible): 18 in, 26 out, 208 total -> 164 thinking.
+    const usage = usageFromChat({
+      prompt_tokens: 18,
+      completion_tokens: 26,
+      total_tokens: 208,
+    })
+    expect(usage?.outputTokens).toBe(190)
+    expect(usage?.reasoningTokens).toBe(164)
+  })
+
+  test("leaves OpenAI-style usage alone (reasoning already in output)", () => {
+    const usage = usageFromChat({
+      prompt_tokens: 10,
+      completion_tokens: 50,
+      total_tokens: 60,
+      completion_tokens_details: { reasoning_tokens: 30 },
+    })
+    expect(usage?.outputTokens).toBe(50)
+    expect(usage?.reasoningTokens).toBe(30)
+  })
+
+  test("ignores a total smaller than its parts", () => {
+    const usage = usageFromChat({
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 12,
+    })
+    expect(usage?.outputTokens).toBe(5)
   })
 })

@@ -127,6 +127,12 @@ const settingsSchema = z.object({
     .max(1_000_000, "RPM limit is too large")
     .nullable(),
   logPayloads: z.boolean(),
+  cacheTtlSeconds: z
+    .number()
+    .int()
+    .min(60, "Cache for at least a minute")
+    .max(604_800, "Cache for at most 7 days")
+    .nullable(),
 })
 
 export type AppSettingsInput = z.input<typeof settingsSchema>
@@ -149,6 +155,7 @@ export async function updateAppSettings(
       monthly_budget_usd: s.monthlyBudgetUsd,
       rpm_limit: s.rpmLimit,
       log_payloads: s.logPayloads,
+      cache_ttl_seconds: s.cacheTtlSeconds,
     })
     .eq("id", id)
   if (error) return actionError(error)
@@ -182,6 +189,16 @@ const bucketsSchema = z
               message:
                 '"default" is reserved: clients send it to mean the default bucket',
             }),
+          strategy: z
+            .enum(["ordered", "fastest", "cheapest", "spread"])
+            .default("ordered"),
+          hedgeAfterMs: z
+            .number()
+            .int()
+            .min(250)
+            .max(60_000)
+            .nullable()
+            .default(null),
           modelIds: z
             .array(z.uuid())
             .max(
@@ -273,6 +290,8 @@ export async function saveAppBuckets(
     p_buckets: value.buckets.map((b) => ({
       name: b.name,
       model_ids: b.modelIds,
+      strategy: b.strategy,
+      hedge_after_ms: b.hedgeAfterMs,
     })),
     p_default: value.defaultBucket,
     p_only_bucket_models: value.onlyBucketModels,

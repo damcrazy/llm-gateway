@@ -1,5 +1,9 @@
 import "server-only"
 
+import type { GatewayApp } from "@/lib/db/types"
+
+import type { CacheOptions } from "./cache"
+
 import { after } from "next/server"
 
 import { authenticateRequest, enforceLimits } from "./auth"
@@ -48,12 +52,31 @@ async function readJson<T>(request: Request): Promise<T> {
   }
 }
 
+/**
+ * The app's response cache for this request. Clients can skip reading it
+ * with Cache-Control: no-cache, or skip it entirely with no-store.
+ */
+function cacheFor(app: GatewayApp, request: Request): CacheOptions | undefined {
+  if (!app.cache_ttl_seconds) return undefined
+  const control = (request.headers.get("cache-control") ?? "").toLowerCase()
+  const noStore = control.includes("no-store")
+  return {
+    appId: app.id,
+    ttlSeconds: app.cache_ttl_seconds,
+    read: !noStore && !control.includes("no-cache"),
+    write: !noStore,
+  }
+}
+
 function gatewayHeaders(
   recorder: RequestRecorder,
   model?: ModelRuntime
 ): Record<string, string> {
   return {
     "x-gateway-request-id": recorder.id,
+    ...(recorder.cacheStatus
+      ? { "x-gateway-cache": recorder.cacheStatus }
+      : {}),
     ...(model
       ? {
           "x-gateway-model": model.slug,
@@ -189,6 +212,7 @@ export async function handleChatCompletions(
       request: body,
       app: auth.app,
       policy: auth.owner.policy,
+      cache: cacheFor(auth.app, request),
       signal: request.signal,
       recorder,
     })
@@ -258,6 +282,7 @@ export async function handleMessages(request: Request): Promise<Response> {
       request: chatRequest,
       app: auth.app,
       policy: auth.owner.policy,
+      cache: cacheFor(auth.app, request),
       signal: request.signal,
       recorder,
     })

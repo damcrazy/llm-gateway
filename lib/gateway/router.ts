@@ -7,11 +7,14 @@ import { CAPABILITY_LABELS } from "@/lib/providers/catalog"
 import type { GatewaySnapshot, ModelRuntime, RouteRuntime } from "./config"
 import { GatewayError } from "./errors"
 import { cooldownRemainingMs } from "./health"
+import { quotaBlock, type QuotaBlock } from "./quota"
 import type { ChatRequest } from "./types"
 import { estimateRequestTokens, requiredCapabilities } from "./usage"
 
 export interface Resolution {
   requestedModel: string
+  /** Start the next candidate too if the first hasn't answered by then. */
+  hedgeAfterMs?: number
   route?: RouteRuntime
   /** Set when the name is one of the app's buckets. */
   bucket?: AppBucket
@@ -60,10 +63,15 @@ export function resolveModel(
   let targets: ModelRuntime[]
 
   if (bucket) {
-    targets = bucket.model_ids
-      .map((id) => snapshot.models.get(id))
-      .filter((model): model is ModelRuntime => Boolean(model))
-      .filter(visible)
+    targets = orderBucket(
+      snapshot,
+      bucket,
+      app?.id ?? "",
+      bucket.model_ids
+        .map((id) => snapshot.models.get(id))
+        .filter((model): model is ModelRuntime => Boolean(model))
+        .filter(visible)
+    )
     if (!targets.length) {
       throw new GatewayError(
         503,
@@ -184,6 +192,27 @@ export function resolveModel(
       )
   }
 
+  // Free-tier quotas: skip models whose cap is reached instead of calling them.
+  const blocked: QuotaBlock[] = []
+  const withinQuota = usable.filter((model) => {
+    const block = quotaBlock(snapshot, model)
+    if (block) blocked.push(block)
+    return !block
+  })
+  if (!withinQuota.length && blocked.length) {
+    throw new GatewayError(
+      429,
+      `Every model for '${name}' has used its quota: ${blocked[0]!.reason}.`,
+      "quota_exhausted",
+      "rate_limit_error",
+      { "Retry-After": String(Math.min(...blocked.map((b) => b.retryAfter))) }
+    )
+  }
+  if (blocked.length) {
+    notes.push(`Skipped ${blocked.length} model(s) over quota.`)
+    usable = withinQuota
+  }
+
   // Healthy models first; models cooling down are a last resort.
   const healthy = usable.filter(
     (model) => cooldownRemainingMs(snapshot, model.id) === 0
@@ -199,6 +228,7 @@ export function resolveModel(
   const candidates = [...healthy, ...cooling]
   return {
     requestedModel: name,
+    ...(bucket?.hedge_after_ms ? { hedgeAfterMs: bucket.hedge_after_ms } : {}),
     route,
     bucket,
     candidates,
@@ -209,6 +239,62 @@ export function resolveModel(
     firstTokenTimeoutMs:
       route?.first_token_timeout_ms ?? DEFAULT_FIRST_TOKEN_TIMEOUT_MS,
     notes,
+  }
+}
+
+const MIN_LATENCY_SAMPLES = 3
+
+/** Blended price used by "cheapest": unknown prices sort last. */
+function priceOf(model: ModelRuntime): number {
+  if (model.input_price_per_mtok == null || model.output_price_per_mtok == null)
+    return Number.POSITIVE_INFINITY
+  return (
+    Number(model.input_price_per_mtok) + Number(model.output_price_per_mtok)
+  )
+}
+
+/** Orders a bucket's models for this request according to its strategy. */
+export function orderBucket(
+  snapshot: GatewaySnapshot,
+  bucket: AppBucket,
+  appId: string,
+  models: ModelRuntime[]
+): ModelRuntime[] {
+  const indexed = models.map((model, index) => ({ model, index }))
+  const byKey = (key: (model: ModelRuntime) => number) =>
+    indexed
+      .sort((a, b) => key(a.model) - key(b.model) || a.index - b.index)
+      .map((entry) => entry.model)
+
+  switch (bucket.strategy) {
+    case "cheapest":
+      return byKey(priceOf)
+    case "fastest": {
+      const known = models
+        .map((model) => snapshot.latency.get(model.id))
+        .filter((stat): stat is NonNullable<typeof stat> =>
+          Boolean(stat && stat.samples >= MIN_LATENCY_SAMPLES)
+        )
+        .map((stat) => stat.firstMs)
+        .sort((a, b) => a - b)
+      // Models without enough data rank as average, so they still get tried.
+      const neutral = known.length ? known[Math.floor(known.length / 2)]! : 0
+      return byKey((model) => {
+        const stat = snapshot.latency.get(model.id)
+        return stat && stat.samples >= MIN_LATENCY_SAMPLES
+          ? stat.firstMs
+          : neutral
+      })
+    }
+    case "spread": {
+      if (models.length < 2) return models
+      const key = `${appId}:${bucket.name}`
+      const offset = (roundRobin.get(key) ?? 0) % models.length
+      roundRobin.set(key, offset + 1)
+      return [...models.slice(offset), ...models.slice(0, offset)]
+    }
+    default:
+      return models
   }
 }
 

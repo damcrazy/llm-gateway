@@ -29,6 +29,13 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import type { AppRow } from "@/lib/db/types"
@@ -43,7 +50,17 @@ type SettingsApp = Pick<
   | "monthly_budget_usd"
   | "rpm_limit"
   | "log_payloads"
+  | "cache_ttl_seconds"
 >
+
+const CACHE_OFF = "off"
+const CACHE_OPTIONS = [
+  { value: CACHE_OFF, label: "Off" },
+  { value: "300", label: "5 minutes" },
+  { value: "3600", label: "1 hour" },
+  { value: "86400", label: "24 hours" },
+  { value: "604800", label: "7 days" },
+]
 
 function parseOptionalNumber(value: string): number | null {
   const trimmed = value.trim()
@@ -60,6 +77,9 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
     app.rpm_limit == null ? "" : String(app.rpm_limit)
   )
   const [logPayloads, setLogPayloads] = useState(app.log_payloads)
+  const [cacheTtl, setCacheTtl] = useState(
+    app.cache_ttl_seconds == null ? CACHE_OFF : String(app.cache_ttl_seconds)
+  )
   const [pending, startTransition] = useTransition()
 
   function submit(event: React.FormEvent) {
@@ -71,6 +91,7 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
         monthlyBudgetUsd: parseOptionalNumber(budget),
         rpmLimit: parseOptionalNumber(rpm),
         logPayloads,
+        cacheTtlSeconds: cacheTtl === CACHE_OFF ? null : Number(cacheTtl),
       })
       if (result.ok) toast.success(result.message)
       else toast.error(result.error)
@@ -170,6 +191,34 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
             </div>
 
             <FieldSeparator />
+
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldLabel htmlFor="settings-cache">Response cache</FieldLabel>
+                <FieldDescription>
+                  An identical request (same model or bucket, messages, tools
+                  and settings) gets the stored answer instantly, at no cost.
+                  Answers are kept in the gateway&apos;s database for this long.
+                  Clients can skip it with{" "}
+                  <code className="font-mono text-xs">
+                    Cache-Control: no-cache
+                  </code>
+                  .
+                </FieldDescription>
+              </FieldContent>
+              <Select value={cacheTtl} onValueChange={setCacheTtl}>
+                <SelectTrigger id="settings-cache" className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {CACHE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
 
             <Field orientation="horizontal">
               <FieldContent>

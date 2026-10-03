@@ -40,6 +40,10 @@ export interface ModelListItem {
   inputPrice: number | null
   outputPrice: number | null
   cachedInputPrice: number | null
+  quotaRpm: number | null
+  quotaRpd: number | null
+  /** Calls this minute / today, when a quota is set. */
+  quotaUsed: { minute: number; day: number } | null
   health: ModelHealthSummary | null
 }
 
@@ -68,6 +72,15 @@ export function normalizeTag(value: string): string {
     .slice(0, 40)
 }
 
+/** Free-tier cap: a positive whole number of requests, or none. */
+export const quotaCount = z
+  .number({ error: "Limits must be numbers" })
+  .int("Limits must be whole numbers")
+  .positive("Limits must be greater than zero")
+  .max(10_000_000, "That limit is too large")
+  .nullable()
+  .default(null)
+
 export const modelFieldsSchema = z.object({
   display_name: z
     .string()
@@ -90,6 +103,8 @@ export const modelFieldsSchema = z.object({
   input_price_per_mtok: price.nullable(),
   output_price_per_mtok: price.nullable(),
   cached_input_price_per_mtok: price.nullable(),
+  quota_rpm: quotaCount,
+  quota_rpd: quotaCount,
 })
 
 export const newModelSchema = modelFieldsSchema.extend({

@@ -183,6 +183,11 @@ export default async function LatencyPage({
                               stream
                             </Badge>
                           )}
+                          {call.cached && (
+                            <Badge variant="outline" className="font-normal">
+                              cached
+                            </Badge>
+                          )}
                           {!call.ok && (
                             <Badge
                               variant="destructive"

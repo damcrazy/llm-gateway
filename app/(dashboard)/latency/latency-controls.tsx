@@ -198,7 +198,16 @@ export function CallBar({ call }: { call: CallTiming }) {
             />
           )}
           <BreakdownLine label="Gateway" value={call.gateway} />
-          {(["auth", "limits", "prepare", "retry_wait", "post"] as const)
+          {(
+            [
+              "auth",
+              "limits",
+              "cache",
+              "prepare",
+              "retry_wait",
+              "post",
+            ] as const
+          )
             .filter((key) => call.phases[key] > 0)
             .map((key) => (
               <BreakdownLine

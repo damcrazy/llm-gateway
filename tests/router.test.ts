@@ -423,4 +423,92 @@ describe("resolveModel", () => {
       expect(ids).toContain("groq/shared-free")
     })
   })
+
+  describe("bucket strategies and quotas", () => {
+    const pricey = model(groq, "pricey", {
+      input_price_per_mtok: 5,
+      output_price_per_mtok: 15,
+    })
+    const cheap = model(groq, "cheap", {
+      input_price_per_mtok: 0.1,
+      output_price_per_mtok: 0.2,
+    })
+    const unknown = model(groq, "unknown", {
+      input_price_per_mtok: null,
+      output_price_per_mtok: null,
+    })
+    const bucketApp = (
+      strategy: "ordered" | "fastest" | "cheapest" | "spread",
+      ids: string[],
+      hedge: number | null = null
+    ) =>
+      app({
+        buckets: [
+          { name: "b", model_ids: ids, strategy, hedge_after_ms: hedge },
+        ],
+      })
+
+    test("cheapest orders by price, unknown prices last", () => {
+      const snap = snapshot([unknown, pricey, cheap])
+      const a = bucketApp("cheapest", [unknown.id, pricey.id, cheap.id])
+      expect(resolveModel(snap, "b", "chat", a, chat()).candidates).toEqual([
+        cheap,
+        pricey,
+        unknown,
+      ])
+    })
+
+    test("fastest uses recent first-token times; too few samples rank as average", () => {
+      const snap = snapshot([pricey, cheap, unknown])
+      snap.latency.set(pricey.id, { firstMs: 300, samples: 10 })
+      snap.latency.set(cheap.id, { firstMs: 900, samples: 10 })
+      snap.latency.set(unknown.id, { firstMs: 50, samples: 1 })
+      const a = bucketApp("fastest", [cheap.id, unknown.id, pricey.id])
+      // unknown has 1 sample -> treated as the median (900): ties keep order.
+      expect(resolveModel(snap, "b", "chat", a, chat()).candidates).toEqual([
+        pricey,
+        cheap,
+        unknown,
+      ])
+    })
+
+    test("spread rotates the first model between requests", () => {
+      const snap = snapshot([pricey, cheap])
+      const a = bucketApp("spread", [pricey.id, cheap.id])
+      const first = resolveModel(snap, "b", "chat", a, chat()).candidates[0]
+      const second = resolveModel(snap, "b", "chat", a, chat()).candidates[0]
+      expect(first).not.toBe(second)
+    })
+
+    test("hedging is passed to the executor", () => {
+      const snap = snapshot([pricey, cheap])
+      const a = bucketApp("ordered", [pricey.id, cheap.id], 2000)
+      expect(resolveModel(snap, "b", "chat", a, chat()).hedgeAfterMs).toBe(2000)
+    })
+
+    test("a model over its free-tier quota is skipped", () => {
+      const capped = model(groq, "capped", { quota_rpm: 2 })
+      const snap = snapshot([capped, cheap])
+      snap.quotaUsage.set(`model:${capped.id}:minute`, 2)
+      const a = bucketApp("ordered", [capped.id, cheap.id])
+      expect(resolveModel(snap, "b", "chat", a, chat()).candidates).toEqual([
+        cheap,
+      ])
+    })
+
+    test("every model over quota is a 429 with Retry-After", () => {
+      const capped = model(openrouter, "daily", { quota_rpd: 50 })
+      const snap = snapshot([capped])
+      snap.quotaUsage.set(`model:${capped.id}:day`, 50)
+      try {
+        resolveModel(snap, "openrouter/daily", "chat", null, chat())
+        throw new Error("expected to throw")
+      } catch (error) {
+        const e = error as GatewayError
+        expect(e.status).toBe(429)
+        expect(e.message).toContain("requests/day")
+        expect(Number(e.headers?.["Retry-After"])).toBeGreaterThan(0)
+      }
+    })
+  })
 })

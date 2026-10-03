@@ -22,6 +22,7 @@ import {
   DUPLICATE_MODEL_MESSAGE,
   firstIssue,
   newModelSchema,
+  quotaCount,
   UNIQUE_VIOLATION,
   type NewModelInput,
 } from "../models/shared"
@@ -57,6 +58,8 @@ const createProviderSchema = z.object({
 const updateProviderSchema = z.object({
   name: nameSchema,
   config: fieldValuesSchema,
+  quotaRpm: quotaCount,
+  quotaRpd: quotaCount,
 })
 
 function afterProviderChange(providerId?: string) {
@@ -201,7 +204,12 @@ export async function createProvider(input: {
 
 export async function updateProvider(
   id: string,
-  input: { name: string; config: FieldValues }
+  input: {
+    name: string
+    config: FieldValues
+    quotaRpm?: number | null
+    quotaRpd?: number | null
+  }
 ): Promise<ActionResult> {
   const access = await providerAccess(id)
   if (!access.ok) return access
@@ -228,7 +236,12 @@ export async function updateProvider(
 
   const { error } = await supabaseAdmin()
     .from("providers")
-    .update({ name: parsed.data.name, config: { ...kept, ...cleaned.value } })
+    .update({
+      name: parsed.data.name,
+      config: { ...kept, ...cleaned.value },
+      quota_rpm: parsed.data.quotaRpm,
+      quota_rpd: parsed.data.quotaRpd,
+    })
     .eq("id", id)
   if (error) return actionError(error)
 

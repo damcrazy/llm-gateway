@@ -45,11 +45,21 @@ export function usageFromChat(
     (typeof raw.cache_read_input_tokens === "number"
       ? raw.cache_read_input_tokens
       : 0)
+  const input = usage.prompt_tokens ?? 0
+  const output = usage.completion_tokens ?? 0
+  // Some OpenAI-compatible APIs (Gemini's) leave "thinking" tokens out of
+  // completion_tokens but count them in total_tokens. They're billed as
+  // output, so the difference is counted as output (and reasoning).
+  const hidden =
+    typeof usage.total_tokens === "number"
+      ? Math.max(0, usage.total_tokens - input - output)
+      : 0
   return {
-    inputTokens: usage.prompt_tokens ?? 0,
-    outputTokens: usage.completion_tokens ?? 0,
+    inputTokens: input,
+    outputTokens: output + hidden,
     cachedTokens: cached ?? 0,
-    reasoningTokens: usage.completion_tokens_details?.reasoning_tokens ?? 0,
+    reasoningTokens:
+      (usage.completion_tokens_details?.reasoning_tokens ?? 0) + hidden,
     estimated: false,
   }
 }

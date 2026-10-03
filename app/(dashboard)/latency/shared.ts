@@ -35,6 +35,10 @@ export const PHASE_LABELS = {
     label: "Limits",
     help: "Rate limit and budget checks. An app with a requests-per-minute limit asks the database on every call.",
   },
+  cache: {
+    label: "Cache lookup",
+    help: "Checking the response cache, for apps that use it.",
+  },
   prepare: {
     label: "Preparing",
     help: "Reading the request, picking the model and translating formats.",

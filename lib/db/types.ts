@@ -30,6 +30,8 @@ export interface AppRow {
   default_model: string | null
   /** Only bucket names and the models in them may be called. */
   only_bucket_models: boolean
+  /** Response cache lifetime; null = no cache. */
+  cache_ttl_seconds: number | null
   monthly_budget_usd: number | null
   rpm_limit: number | null
   log_payloads: boolean
@@ -40,11 +42,17 @@ export interface AppRow {
   updated_at: string
 }
 
+export type BucketStrategy = "ordered" | "fastest" | "cheapest" | "spread"
+
 /** A named, ordered chain of models an app calls like a model ("smart"). */
 export interface AppBucket {
   name: string
   /** Model ids in the order they're tried. */
   model_ids: string[]
+  /** How the models are ordered for each request (default: as listed). */
+  strategy?: BucketStrategy
+  /** Start the next model too if the first hasn't answered by then. */
+  hedge_after_ms?: number | null
 }
 
 export interface AppBucketRow extends AppBucket {
@@ -83,6 +91,9 @@ export interface ProviderRow {
   enabled: boolean
   /** null = shared (admins manage it); otherwise the member who owns it. */
   owner_email: string | null
+  /** Free-tier caps shared by all of this provider's models (null = none). */
+  quota_rpm: number | null
+  quota_rpd: number | null
   created_at: string
   updated_at: string
 }
@@ -128,6 +139,9 @@ export interface ModelRow {
   tags: string[]
   context_window: number | null
   max_output_tokens: number | null
+  /** Free-tier caps on calls to this model (null = none). */
+  quota_rpm: number | null
+  quota_rpd: number | null
   /** null = unknown; 0 = free */
   input_price_per_mtok: number | null
   output_price_per_mtok: number | null

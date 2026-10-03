@@ -5,7 +5,7 @@ import { toast } from "sonner"
 
 import { saveAppBuckets, type AppBucketsInput } from "../actions"
 import { BucketsBoard } from "./buckets-board"
-import type { BucketsData } from "./buckets-shared"
+import type { BucketStrategy, BucketsData } from "./buckets-shared"
 import { ModelLibrary } from "./model-library"
 
 /** One model's place in a bucket. `key` is unique across the whole board. */
@@ -14,11 +14,18 @@ export interface BoardItem {
   modelId: string
 }
 
+export interface BucketSettings {
+  strategy: BucketStrategy
+  hedgeAfterMs: number | null
+}
+
 export interface Board {
   /** Bucket key -> its models in fallback order. Key order = bucket order. */
   columns: Record<string, BoardItem[]>
   /** Bucket key -> name. Keys stay stable when a bucket is renamed. */
   names: Record<string, string>
+  /** Bucket key -> strategy and hedging. */
+  settings: Record<string, BucketSettings>
   defaultKey: string | null
   onlyBuckets: boolean
 }
@@ -31,6 +38,7 @@ const makeKey = (prefix: string) => `${prefix}${++keySequence}`
 function initialBoard(data: BucketsData): Board {
   const columns: Board["columns"] = {}
   const names: Board["names"] = {}
+  const settings: Board["settings"] = {}
   let defaultKey: string | null = null
   for (const bucket of data.buckets) {
     const key = makeKey("bucket-")
@@ -39,9 +47,19 @@ function initialBoard(data: BucketsData): Board {
       modelId,
     }))
     names[key] = bucket.name
+    settings[key] = {
+      strategy: bucket.strategy,
+      hedgeAfterMs: bucket.hedgeAfterMs,
+    }
     if (bucket.name === data.defaultBucket) defaultKey = key
   }
-  return { columns, names, defaultKey, onlyBuckets: data.onlyBucketModels }
+  return {
+    columns,
+    names,
+    settings,
+    defaultKey,
+    onlyBuckets: data.onlyBucketModels,
+  }
 }
 
 function toInput(board: Board): AppBucketsInput {
@@ -49,6 +67,8 @@ function toInput(board: Board): AppBucketsInput {
     buckets: Object.entries(board.columns).map(([key, items]) => ({
       name: board.names[key] ?? "",
       modelIds: items.map((item) => item.modelId),
+      strategy: board.settings[key]?.strategy ?? "ordered",
+      hedgeAfterMs: board.settings[key]?.hedgeAfterMs ?? null,
     })),
     defaultBucket: board.defaultKey
       ? (board.names[board.defaultKey] ?? null)
@@ -182,6 +202,10 @@ export function ModelsSection({
           })),
         },
         names: { ...b.names, [key]: name },
+        settings: {
+          ...b.settings,
+          [key]: { strategy: "ordered", hedgeAfterMs: null },
+        },
         // The first bucket becomes the default.
         defaultKey: b.defaultKey ?? key,
       }))
@@ -200,15 +224,33 @@ export function ModelsSection({
       update((b) => {
         const columns = { ...b.columns }
         const names = { ...b.names }
+        const settings = { ...b.settings }
         delete columns[key]
         delete names[key]
+        delete settings[key]
         return {
           ...b,
           columns,
           names,
+          settings,
           defaultKey: b.defaultKey === key ? null : b.defaultKey,
         }
       }),
+    [update]
+  )
+
+  const setBucketSettings = useCallback(
+    (key: string, next: Partial<BucketSettings>) =>
+      update((b) => ({
+        ...b,
+        settings: {
+          ...b.settings,
+          [key]: {
+            ...(b.settings[key] ?? { strategy: "ordered", hedgeAfterMs: null }),
+            ...next,
+          },
+        },
+      })),
     [update]
   )
 
@@ -283,6 +325,7 @@ export function ModelsSection({
         onRenameBucket={renameBucket}
         onDeleteBucket={deleteBucket}
         onSetDefault={setDefault}
+        onSetBucketSettings={setBucketSettings}
         onSetOnlyBuckets={setOnlyBuckets}
         drag={drag}
       />

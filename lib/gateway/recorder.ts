@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto"
 import type { AttemptLogEntry } from "@/lib/db/types"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
+import type { CacheStatus } from "./cache"
 import type { ModelRuntime, RouteRuntime } from "./config"
 import type { Usage } from "./types"
 import { costUsd } from "./usage"
@@ -37,6 +38,8 @@ export interface RequestTimings {
   auth?: number
   /** Rate limit and budget checks. */
   limits?: number
+  /** Looking up the response cache. */
+  cache?: number
   /** Reading the body, routing and translating, before the first provider call. */
   prepare: number
   /** Deliberate pauses before retrying a model. */
@@ -53,7 +56,7 @@ export interface RequestTimings {
   overhead: number
 }
 
-type TimedPhase = "auth" | "limits" | "retry_wait" | "failed"
+type TimedPhase = "auth" | "limits" | "cache" | "retry_wait" | "failed"
 
 const ms = (value: number) => Math.round(value * 10) / 10
 
@@ -83,6 +86,8 @@ export class RequestRecorder {
   stream = false
   usage?: Usage
   ttftMs?: number
+  /** Set when the app uses the response cache. */
+  cacheStatus?: CacheStatus
   endedAt?: number
   status: "success" | "error" = "success"
   httpStatus = 200
@@ -173,6 +178,7 @@ export class RequestRecorder {
     const total = end - this.t0
     const auth = this.spans.auth ?? 0
     const limits = this.spans.limits ?? 0
+    const cache = this.spans.cache ?? 0
     const failed = this.spans.failed ?? 0
     const served = this.servedSpan
     const providerEnd = served ? (served.end ?? end) : undefined
@@ -180,12 +186,16 @@ export class RequestRecorder {
     const timings: RequestTimings = {
       total: ms(total),
       prepare: ms(
-        Math.max(0, (this.firstAttemptAt ?? end) - this.t0 - auth - limits)
+        Math.max(
+          0,
+          (this.firstAttemptAt ?? end) - this.t0 - auth - limits - cache
+        )
       ),
       overhead: ms(Math.max(0, total - provider - failed)),
     }
     if (this.spans.auth !== undefined) timings.auth = ms(auth)
     if (this.spans.limits !== undefined) timings.limits = ms(limits)
+    if (this.spans.cache !== undefined) timings.cache = ms(cache)
     if (this.spans.retry_wait) timings.retry_wait = ms(this.spans.retry_wait)
     if (failed) timings.failed = ms(failed)
     if (served) {
@@ -197,6 +207,8 @@ export class RequestRecorder {
   }
 
   get costUsd(): number {
+    // A cached answer cost nothing upstream.
+    if (this.cacheStatus === "HIT") return 0
     return this.served && this.usage ? costUsd(this.served, this.usage) : 0
   }
 
@@ -236,6 +248,7 @@ export class RequestRecorder {
       latency_ms: this.latencyMs,
       ttft_ms: this.ttftMs ?? null,
       timings,
+      cache_hit: this.cacheStatus === "HIT",
       provider_ms: Math.round(timings.provider ?? 0),
       overhead_ms: Math.round(timings.overhead),
       user_agent: this.userAgent,

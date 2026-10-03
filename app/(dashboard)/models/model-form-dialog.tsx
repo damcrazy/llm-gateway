@@ -62,6 +62,8 @@ interface FormState {
   inputPrice: string
   outputPrice: string
   cachedInputPrice: string
+  quotaRpm: string
+  quotaRpd: string
 }
 
 function toText(value: number | null | undefined): string {
@@ -80,6 +82,8 @@ function initialState(model?: ModelListItem): FormState {
     inputPrice: toText(model?.inputPrice),
     outputPrice: toText(model?.outputPrice),
     cachedInputPrice: toText(model?.cachedInputPrice),
+    quotaRpm: toText(model?.quotaRpm),
+    quotaRpd: toText(model?.quotaRpd),
   }
 }
 
@@ -116,6 +120,8 @@ function toFields(state: FormState): ModelFieldsInput {
     input_price_per_mtok: optionalNumber(state.inputPrice),
     output_price_per_mtok: optionalNumber(state.outputPrice),
     cached_input_price_per_mtok: optionalNumber(state.cachedInputPrice),
+    quota_rpm: optionalNumber(state.quotaRpm),
+    quota_rpd: optionalNumber(state.quotaRpd),
   }
 }
 
@@ -442,6 +448,55 @@ function ModelForm({
             value={state.cachedInputPrice}
             onChange={(value) => set("cachedInputPrice", value)}
           />
+        </div>
+      </FieldSet>
+
+      <FieldSet className="gap-3">
+        <FieldLegend variant="label" className="mb-0">
+          Free-tier limits
+        </FieldLegend>
+        <FieldDescription>
+          The provider&apos;s caps for this model, if any (e.g. Gemini free: 15
+          a minute, 1,500 a day). Once reached, buckets skip it instead of
+          getting a 429. Days reset at 00:00 UTC. Leave blank for no limit.
+        </FieldDescription>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor={`${uid}-quota-rpm`}>Per minute</FieldLabel>
+            <InputGroup>
+              <InputGroupInput
+                id={`${uid}-quota-rpm`}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                placeholder="No limit"
+                value={state.quotaRpm}
+                onChange={(event) => set("quotaRpm", event.target.value)}
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>requests</InputGroupText>
+              </InputGroupAddon>
+            </InputGroup>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${uid}-quota-rpd`}>Per day</FieldLabel>
+            <InputGroup>
+              <InputGroupInput
+                id={`${uid}-quota-rpd`}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                placeholder="No limit"
+                value={state.quotaRpd}
+                onChange={(event) => set("quotaRpd", event.target.value)}
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>requests</InputGroupText>
+              </InputGroupAddon>
+            </InputGroup>
+          </Field>
         </div>
       </FieldSet>
 

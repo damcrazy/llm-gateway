@@ -18,6 +18,8 @@ export interface CallTiming {
   endpoint: string
   stream: boolean
   ok: boolean
+  /** Answered from the response cache. */
+  cached: boolean
   attempts: number
   total: number
   /** The answering provider, start to finish. */
@@ -37,6 +39,7 @@ export interface CallTiming {
 export interface GatewayPhases {
   auth: number
   limits: number
+  cache: number
   prepare: number
   retry_wait: number
   post: number
@@ -109,7 +112,7 @@ export async function loadLatency(
   let query = supabase
     .from("request_logs")
     .select(
-      "id, created_at, app_id, requested_model, model_id, provider_id, endpoint, stream, status, attempts, ttft_ms, timings"
+      "id, created_at, app_id, requested_model, model_id, provider_id, endpoint, stream, status, attempts, ttft_ms, timings, cache_hit"
     )
     .gte("created_at", since)
     .not("timings", "is", null)
@@ -137,6 +140,7 @@ export async function loadLatency(
     attempts: number
     ttft_ms: number | null
     timings: RequestTimings
+    cache_hit: boolean | null
   }[]
   const apps = (appsResult.data ?? []) as { id: string; name: string }[]
   const appName = new Map(apps.map((app) => [app.id, app.name]))
@@ -168,11 +172,12 @@ export async function loadLatency(
     const phases: GatewayPhases = {
       auth: t.auth ?? 0,
       limits: t.limits ?? 0,
+      cache: t.cache ?? 0,
       prepare: t.prepare ?? 0,
       retry_wait: t.retry_wait ?? 0,
       post: t.post ?? 0,
     }
-    const before = phases.auth + phases.limits + phases.prepare
+    const before = phases.auth + phases.limits + phases.cache + phases.prepare
     const model =
       (row.model_id && modelSlug.get(row.model_id)) ||
       row.requested_model ||
@@ -192,6 +197,7 @@ export async function loadLatency(
       endpoint: row.endpoint,
       stream: row.stream,
       ok: row.status === "success",
+      cached: row.cache_hit === true,
       attempts: row.attempts,
       total: t.total,
       provider_ms: t.provider ?? 0,
@@ -219,6 +225,7 @@ export async function loadLatency(
   const phaseKeys: PhaseStat["key"][] = [
     "auth",
     "limits",
+    "cache",
     "prepare",
     "retry_wait",
     "failed",

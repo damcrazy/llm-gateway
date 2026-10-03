@@ -1,6 +1,44 @@
 // Shapes shared by the app's Models tab (server page -> client components).
 
+import type { BucketStrategy } from "@/lib/db/types"
 import type { Capability } from "@/lib/providers/catalog"
+
+export type { BucketStrategy }
+
+export const STRATEGY_OPTIONS: {
+  value: BucketStrategy
+  label: string
+  help: string
+}[] = [
+  {
+    value: "ordered",
+    label: "In order",
+    help: "Tries the models top to bottom.",
+  },
+  {
+    value: "fastest",
+    label: "Fastest first",
+    help: "Orders by each model's recent time to first token.",
+  },
+  {
+    value: "cheapest",
+    label: "Cheapest first",
+    help: "Orders by price per token.",
+  },
+  {
+    value: "spread",
+    label: "Spread evenly",
+    help: "Rotates which model goes first, to share the load.",
+  },
+]
+
+export const HEDGE_OPTIONS = [
+  { value: "off", label: "No hedge", ms: null },
+  { value: "1000", label: "Hedge 1 s", ms: 1000 },
+  { value: "2000", label: "Hedge 2 s", ms: 2000 },
+  { value: "5000", label: "Hedge 5 s", ms: 5000 },
+  { value: "10000", label: "Hedge 10 s", ms: 10000 },
+] as const
 
 export type ModelStatus =
   | { kind: "ok" }
@@ -37,7 +75,12 @@ export interface BucketsData {
   models: BucketModel[]
   /** Ids of models the app's owner may add (enabled and allowed). */
   addable: string[]
-  buckets: { name: string; modelIds: string[] }[]
+  buckets: {
+    name: string
+    modelIds: string[]
+    strategy: BucketStrategy
+    hedgeAfterMs: number | null
+  }[]
   defaultBucket: string | null
   onlyBucketModels: boolean
   /** e.g. "free models only", when the owner's access is limited. */

@@ -27,8 +27,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/animate-ui/components/radix/dialog"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
 import type { ProviderConfig } from "@/lib/db/types"
 import { PROVIDER_TYPE_SPECS, type ProviderType } from "@/lib/providers/catalog"
@@ -56,25 +68,34 @@ export function ProviderSettingsForm({
   slug,
   type,
   config,
+  quota,
 }: {
   id: string
   name: string
   slug: string
   type: ProviderType
   config: ProviderConfig
+  /** Free-tier caps shared by all of this provider's models. */
+  quota: { rpm: number | null; rpd: number | null }
 }) {
   const uid = useId()
   const spec = PROVIDER_TYPE_SPECS[type]
   const [saved, setSaved] = useState(() => ({
     name: initialName,
     config: configValues(type, config),
+    rpm: quota.rpm == null ? "" : String(quota.rpm),
+    rpd: quota.rpd == null ? "" : String(quota.rpd),
   }))
   const [name, setName] = useState(saved.name)
   const [values, setValues] = useState<FieldValues>(saved.config)
+  const [rpm, setRpm] = useState(saved.rpm)
+  const [rpd, setRpd] = useState(saved.rpd)
   const [pending, startTransition] = useTransition()
 
   const dirty =
     name !== saved.name ||
+    rpm !== saved.rpm ||
+    rpd !== saved.rpd ||
     spec.configFields.some(
       (field) => (values[field.key] ?? "") !== (saved.config[field.key] ?? "")
     )
@@ -82,12 +103,17 @@ export function ProviderSettingsForm({
   function submit(event: React.FormEvent) {
     event.preventDefault()
     startTransition(async () => {
-      const result = await updateProvider(id, { name, config: values })
+      const result = await updateProvider(id, {
+        name,
+        config: values,
+        quotaRpm: rpm.trim() ? Number(rpm) : null,
+        quotaRpd: rpd.trim() ? Number(rpd) : null,
+      })
       if (!result.ok) {
         toast.error(result.error)
         return
       }
-      setSaved({ name, config: values })
+      setSaved({ name, config: values, rpm, rpd })
       toast.success(result.message)
     })
   }
@@ -131,6 +157,54 @@ export function ProviderSettingsForm({
           setValues((current) => ({ ...current, [key]: value }))
         }
       />
+      <FieldSet className="gap-3">
+        <FieldLegend variant="label" className="mb-0">
+          Free-tier limits for the whole provider
+        </FieldLegend>
+        <FieldDescription>
+          For caps that apply to your key across all of its models (e.g.
+          OpenRouter free: 20 a minute, 50 a day). Per-model caps are set on
+          each model. Days reset at 00:00 UTC. Leave blank for no limit.
+        </FieldDescription>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor={`${uid}-quota-rpm`}>Per minute</FieldLabel>
+            <InputGroup>
+              <InputGroupInput
+                id={`${uid}-quota-rpm`}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                placeholder="No limit"
+                value={rpm}
+                onChange={(event) => setRpm(event.target.value)}
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>requests</InputGroupText>
+              </InputGroupAddon>
+            </InputGroup>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${uid}-quota-rpd`}>Per day</FieldLabel>
+            <InputGroup>
+              <InputGroupInput
+                id={`${uid}-quota-rpd`}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                placeholder="No limit"
+                value={rpd}
+                onChange={(event) => setRpd(event.target.value)}
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>requests</InputGroupText>
+              </InputGroupAddon>
+            </InputGroup>
+          </Field>
+        </div>
+      </FieldSet>
       <div className="flex justify-end">
         <Button type="submit" disabled={pending || !dirty}>
           {pending && <Spinner />}

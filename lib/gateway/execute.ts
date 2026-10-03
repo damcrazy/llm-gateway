@@ -3,6 +3,15 @@ import "server-only"
 import type { AccessPolicy } from "@/lib/access"
 import type { GatewayApp, ModelKind } from "@/lib/db/types"
 
+import {
+  cacheKey,
+  collectStream,
+  completionToChunks,
+  isCacheable,
+  readCache,
+  writeCache,
+  type CacheOptions,
+} from "./cache"
 import { adapterFor } from "./adapters"
 import { getSnapshot, type GatewaySnapshot, type ModelRuntime } from "./config"
 import {
@@ -12,6 +21,7 @@ import {
   toUpstreamError,
 } from "./errors"
 import { decideOnFailure, recordFailure, recordSuccess } from "./health"
+import { noteProviderCall } from "./quota"
 import type { RequestRecorder } from "./recorder"
 import { resolveModel, type Resolution } from "./router"
 import type {
@@ -52,31 +62,62 @@ function sleep(ms: number, signal: AbortSignal) {
  * cooldown (shared across instances) so later requests skip them, and the
  * caller never sees the individual failures unless every attempt fails.
  */
+class HedgeCancelled extends Error {
+  constructor() {
+    super("Cancelled: another model answered first")
+  }
+}
+
+type Outcome<T> =
+  | {
+      ok: true
+      model: ModelRuntime
+      value: T
+      started: number
+      attemptStart: number
+      held: boolean
+      release: () => void
+    }
+  | {
+      ok: false
+      model: ModelRuntime
+      error: unknown
+      upstream: UpstreamError
+      started: number
+      attemptStart: number
+    }
+
+interface Running<T> {
+  model: ModelRuntime
+  result: Promise<Outcome<T>>
+  cancel(): void
+}
+
+/**
+ * Tries candidates in order until one succeeds. Failed models are put into
+ * cooldown (shared across instances) so later requests skip them, and the
+ * caller never sees the individual failures unless every attempt fails.
+ *
+ * With hedging (a bucket's hedge_after_ms), when a model hasn't answered in
+ * time the next one starts too; the first to answer wins and the other is
+ * cancelled without counting against its health.
+ */
 async function withFailover<T>(
   snapshot: GatewaySnapshot,
   resolution: Resolution,
   recorder: RequestRecorder,
   clientSignal: AbortSignal,
-  attempt: Attempt<T>
+  attempt: Attempt<T>,
+  /** Clean up a successful result that lost a hedged race. */
+  discard: (value: T) => void = () => {}
 ): Promise<{ value: T; model: ModelRuntime }> {
   const queue = [...resolution.candidates]
   const retried = new Set<string>()
   let lastError: UpstreamError | undefined
   let lastTransient: ModelRuntime | undefined
 
-  for (let i = 0; i < resolution.maxAttempts; i++) {
-    let model = queue.shift()
-    if (!model && lastTransient && !retried.has(lastTransient.id)) {
-      // Every candidate failed; give a transiently failing one a second chance.
-      retried.add(lastTransient.id)
-      model = lastTransient
-      const waitStart = performance.now()
-      await sleep(400, clientSignal)
-      recorder.addSpan("retry_wait", performance.now() - waitStart)
-    }
-    if (!model) break
-    if (clientSignal.aborted) throw new ClientAbortError()
-
+  function start(model: ModelRuntime): Running<T> {
+    noteProviderCall(snapshot, model)
     const started = Date.now()
     const attemptStart = recorder.attemptStarted()
     const controller = new AbortController()
@@ -98,57 +139,166 @@ async function withFailover<T>(
       clearTimeout(timer)
       clientSignal.removeEventListener("abort", onClientAbort)
     }
+    const result = attempt(model, {
+      signal: controller.signal,
+      abort: (reason) => controller.abort(reason),
+      hold: () => {
+        held = true
+        return release
+      },
+    }).then(
+      (value): Outcome<T> => {
+        if (!held) release()
+        return { ok: true, model, value, started, attemptStart, held, release }
+      },
+      (error): Outcome<T> => {
+        release()
+        const reason = controller.signal.aborted
+          ? controller.signal.reason
+          : error
+        return {
+          ok: false,
+          model,
+          error: reason ?? error,
+          upstream: toUpstreamError(
+            reason instanceof UpstreamError ? reason : error
+          ),
+          started,
+          attemptStart,
+        }
+      }
+    )
+    return {
+      model,
+      result,
+      cancel: () => controller.abort(new HedgeCancelled()),
+    }
+  }
 
-    try {
-      const value = await attempt(model, {
-        signal: controller.signal,
-        abort: (reason) => controller.abort(reason),
-        hold: () => {
-          held = true
-          return release
-        },
-      })
-      if (!held) release()
-      // A held attempt is a stream that has produced its first chunk.
-      recorder.attemptSucceeded(attemptStart, held)
-      recordSuccess(model, snapshot)
-      recorder.attempts.push({
-        model_id: model.id,
-        model: model.slug,
-        provider: model.provider.name,
-        status: 200,
-        latency_ms: Date.now() - started,
-      })
-      recorder.served = model
-      return { value, model }
-    } catch (error) {
-      release()
-      recorder.attemptFailed(attemptStart)
-      if (clientSignal.aborted || error instanceof ClientAbortError)
-        throw new ClientAbortError()
+  function succeed(outcome: Extract<Outcome<T>, { ok: true }>) {
+    // A held attempt is a stream that has produced its first chunk.
+    recorder.attemptSucceeded(outcome.attemptStart, outcome.held)
+    recordSuccess(outcome.model, snapshot)
+    recorder.attempts.push({
+      model_id: outcome.model.id,
+      model: outcome.model.slug,
+      provider: outcome.model.provider.name,
+      status: 200,
+      latency_ms: Date.now() - outcome.started,
+    })
+    recorder.served = outcome.model
+    return { value: outcome.value, model: outcome.model }
+  }
 
-      const reason = controller.signal.aborted
-        ? controller.signal.reason
-        : error
-      const upstream = toUpstreamError(
-        reason instanceof UpstreamError ? reason : error
+  /** Logs a cancelled hedge loser; never held against the model's health. */
+  function dropLoser(outcome: Outcome<T>) {
+    if (outcome.ok) {
+      outcome.release()
+      discard(outcome.value)
+    }
+    recorder.attempts.push({
+      model_id: outcome.model.id,
+      model: outcome.model.slug,
+      provider: outcome.model.provider.name,
+      status: null,
+      error: "Cancelled: another model answered first",
+      latency_ms: Date.now() - outcome.started,
+    })
+  }
+
+  /** Records a real failure; returns whether to try another model. */
+  function fail(outcome: Extract<Outcome<T>, { ok: false }>): boolean {
+    if (clientSignal.aborted || outcome.error instanceof ClientAbortError)
+      throw new ClientAbortError()
+    recorder.attemptFailed(outcome.attemptStart)
+    const decision = decideOnFailure(
+      snapshot,
+      outcome.model.id,
+      outcome.upstream
+    )
+    recordFailure(
+      outcome.model,
+      snapshot,
+      outcome.upstream,
+      decision.cooldownSeconds
+    )
+    recorder.attempts.push({
+      model_id: outcome.model.id,
+      model: outcome.model.slug,
+      provider: outcome.model.provider.name,
+      status: outcome.upstream.status,
+      error: outcome.upstream.message.slice(0, 500),
+      latency_ms: Date.now() - outcome.started,
+      ...(decision.cooldownSeconds
+        ? { cooldown_s: decision.cooldownSeconds }
+        : {}),
+    })
+    lastError = outcome.upstream
+    if (decision.transient) lastTransient = outcome.model
+    return decision.failover
+  }
+
+  for (let i = 0; i < resolution.maxAttempts; i++) {
+    let model = queue.shift()
+    if (!model && lastTransient && !retried.has(lastTransient.id)) {
+      // Every candidate failed; give a transiently failing one a second chance.
+      retried.add(lastTransient.id)
+      model = lastTransient
+      const waitStart = performance.now()
+      await sleep(400, clientSignal)
+      recorder.addSpan("retry_wait", performance.now() - waitStart)
+    }
+    if (!model) break
+    if (clientSignal.aborted) throw new ClientAbortError()
+
+    const primary = start(model)
+    const hedgeMs = resolution.hedgeAfterMs
+    const backupModel =
+      hedgeMs && queue.length && i + 1 < resolution.maxAttempts
+        ? queue[0]
+        : undefined
+
+    if (!backupModel) {
+      const outcome = await primary.result
+      if (outcome.ok) return succeed(outcome)
+      if (!fail(outcome)) break
+      continue
+    }
+
+    // Hedged: give the primary a head start, then race it with the backup.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const headStart = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), hedgeMs)
+    })
+    const early = await Promise.race([primary.result, headStart])
+    clearTimeout(timer)
+    if (early) {
+      if (early.ok) return succeed(early)
+      if (!fail(early)) break
+      continue
+    }
+
+    queue.shift()
+    i++
+    const backup = start(backupModel)
+    const runners = [primary, backup]
+    const pending = new Map(runners.map((r) => [r, r.result] as const))
+    while (pending.size) {
+      const [runner, outcome] = await Promise.race(
+        [...pending].map(([r, p]) => p.then((o) => [r, o] as const))
       )
-      const decision = decideOnFailure(snapshot, model.id, upstream)
-      recordFailure(model, snapshot, upstream, decision.cooldownSeconds)
-      recorder.attempts.push({
-        model_id: model.id,
-        model: model.slug,
-        provider: model.provider.name,
-        status: upstream.status,
-        error: upstream.message.slice(0, 500),
-        latency_ms: Date.now() - started,
-        ...(decision.cooldownSeconds
-          ? { cooldown_s: decision.cooldownSeconds }
-          : {}),
-      })
-      lastError = upstream
-      if (decision.transient) lastTransient = model
-      if (!decision.failover) break
+      pending.delete(runner)
+      if (outcome.ok) {
+        for (const [other, result] of pending) {
+          other.cancel()
+          void result.then(dropLoser)
+        }
+        return succeed(outcome)
+      }
+      if (outcome.error instanceof HedgeCancelled) continue
+      if (!fail(outcome) && pending.size === 0) {
+        throw finalError(lastError, recorder)
+      }
     }
   }
 
@@ -253,6 +403,8 @@ export async function executeChat(options: {
   policy?: AccessPolicy
   /** Whose private providers may be used (default: the app's owner). */
   privateOwner?: string | null
+  /** The app's response cache, when it has one. */
+  cache?: CacheOptions
   signal: AbortSignal
   recorder: RequestRecorder
 }): Promise<ChatExecution> {
@@ -274,7 +426,37 @@ export async function executeChat(options: {
   recorder.requestedModel = resolution.requestedModel
   recorder.route = resolution.route
 
-  const { value, model } = await withFailover(
+  // Looked up after routing, so a stored answer never bypasses access rules.
+  const cache =
+    options.cache && isCacheable(request) ? options.cache : undefined
+  const key = cache
+    ? cacheKey({ ...request, model: resolution.requestedModel })
+    : ""
+  if (cache) {
+    recorder.cacheStatus = cache.read ? "MISS" : "BYPASS"
+    if (cache.read) {
+      const lookupStart = performance.now()
+      const hit = await readCache(cache.appId, key)
+      recorder.addSpan("cache", performance.now() - lookupStart)
+      const model =
+        hit &&
+        ((hit.modelId && snapshot.models.get(hit.modelId)) ||
+          resolution.candidates[0])
+      if (hit && model) {
+        recorder.cacheStatus = "HIT"
+        recorder.served = model
+        return request.stream
+          ? {
+              type: "stream",
+              chunks: completionToChunks(hit.completion),
+              model,
+            }
+          : { type: "json", completion: hit.completion, model }
+      }
+    }
+  }
+
+  const failover = await withFailover(
     snapshot,
     resolution,
     recorder,
@@ -320,8 +502,26 @@ export async function executeChat(options: {
       } finally {
         deadline.clear()
       }
+    },
+    // A stream that lost a hedged race is closed.
+    (output) => {
+      if (output.type === "stream") void output.chunks.return(undefined)
     }
   )
+  const { model } = failover
+  let value = failover.value
+  if (cache?.write) {
+    if (value.type === "json") {
+      writeCache(cache, key, model.id, value.completion)
+    } else {
+      value = {
+        type: "stream",
+        chunks: collectStream(value.chunks, (completion) =>
+          writeCache(cache, key, model.id, completion)
+        ),
+      }
+    }
+  }
   return { ...value, model }
 }
 

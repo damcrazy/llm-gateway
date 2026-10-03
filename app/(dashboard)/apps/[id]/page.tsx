@@ -140,7 +140,7 @@ export default async function AppPage({ params, searchParams }: Props) {
     }),
     supabase
       .from("app_buckets")
-      .select("name, position, model_ids")
+      .select("name, position, model_ids, strategy, hedge_after_ms")
       .eq("app_id", id)
       .order("position"),
     supabase
@@ -192,9 +192,14 @@ export default async function AppPage({ params, searchParams }: Props) {
   const buckets = (
     (bucketsResult.data ?? []) as Pick<
       AppBucketRow,
-      "name" | "position" | "model_ids"
+      "name" | "position" | "model_ids" | "strategy" | "hedge_after_ms"
     >[]
-  ).map((bucket) => ({ name: bucket.name, modelIds: bucket.model_ids }))
+  ).map((bucket) => ({
+    name: bucket.name,
+    modelIds: bucket.model_ids,
+    strategy: bucket.strategy ?? "ordered",
+    hedgeAfterMs: bucket.hedge_after_ms ?? null,
+  }))
   const bucketsData = buildBucketsData({
     models,
     providers: (providersResult.data ?? []) as {
@@ -372,7 +377,7 @@ function buildBucketsData({
   health: Pick<ModelHealthRow, "model_id" | "cooldown_until">[]
   usage: UsageBreakdownRow[]
   policy: ReturnType<typeof accessPolicy>
-  buckets: { name: string; modelIds: string[] }[]
+  buckets: BucketsData["buckets"]
   app: AppRow
 }): BucketsData {
   const providerById = new Map(providers.map((p) => [p.id, p]))

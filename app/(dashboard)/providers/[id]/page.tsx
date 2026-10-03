@@ -174,6 +174,7 @@ export default async function ProviderPage({ params }: Props) {
               slug={provider.slug}
               type={provider.type}
               config={config}
+              quota={{ rpm: provider.quota_rpm, rpd: provider.quota_rpd }}
             />
           </CardContent>
         </Card>

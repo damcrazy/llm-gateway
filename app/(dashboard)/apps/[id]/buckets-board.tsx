@@ -105,6 +105,13 @@ import {
   KanbanItemHandle,
   KanbanOverlay,
 } from "@/components/ui/kanban"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { formatCompact, formatUsd } from "@/lib/format"
 import { CAPABILITY_LABELS, type Capability } from "@/lib/providers/catalog"
@@ -116,8 +123,18 @@ import {
   MAX_BUCKETS,
   toBucketName,
 } from "../_lib"
-import { MODEL_DRAG_TYPE, type BucketModel } from "./buckets-shared"
-import type { Board, BoardItem, SaveState } from "./models-section"
+import {
+  HEDGE_OPTIONS,
+  MODEL_DRAG_TYPE,
+  STRATEGY_OPTIONS,
+  type BucketModel,
+} from "./buckets-shared"
+import type {
+  Board,
+  BoardItem,
+  BucketSettings,
+  SaveState,
+} from "./models-section"
 
 const CAPABILITY_ICONS: Record<Capability, LucideIcon> = {
   tools: WrenchIcon,
@@ -151,6 +168,7 @@ export function BucketsBoard({
   onRenameBucket,
   onDeleteBucket,
   onSetDefault,
+  onSetBucketSettings,
   onSetOnlyBuckets,
   drag,
 }: {
@@ -166,6 +184,7 @@ export function BucketsBoard({
   onRenameBucket: (key: string, name: string) => void
   onDeleteBucket: (key: string) => void
   onSetDefault: (key: string | null) => void
+  onSetBucketSettings: (key: string, next: Partial<BucketSettings>) => void
   onSetOnlyBuckets: (value: boolean) => void
   drag: DragHandlers
 }) {
@@ -253,6 +272,13 @@ export function BucketsBoard({
                   name={board.names[key] ?? ""}
                   items={board.columns[key] ?? []}
                   isDefault={board.defaultKey === key}
+                  settings={
+                    board.settings[key] ?? {
+                      strategy: "ordered",
+                      hedgeAfterMs: null,
+                    }
+                  }
+                  onSettingsChange={(next) => onSetBucketSettings(key, next)}
                   modelsById={modelsById}
                   addable={addable}
                   otherNames={names.filter((n) => n !== board.names[key])}
@@ -362,6 +388,8 @@ function BucketColumn({
   name,
   items,
   isDefault,
+  settings,
+  onSettingsChange,
   modelsById,
   addable,
   otherNames,
@@ -375,6 +403,8 @@ function BucketColumn({
   name: string
   items: BoardItem[]
   isDefault: boolean
+  settings: BucketSettings
+  onSettingsChange: (next: Partial<BucketSettings>) => void
   modelsById: Map<string, BucketModel>
   addable: string[]
   otherNames: string[]
@@ -492,6 +522,8 @@ function BucketColumn({
         </DropdownMenu>
       </div>
 
+      <BucketStrategyRow settings={settings} onChange={onSettingsChange} />
+
       <div className="flex min-h-24 flex-col gap-2">
         {items.map((item, index) => {
           const model = modelsById.get(item.modelId)
@@ -565,6 +597,69 @@ function BucketColumn({
         </AlertDialogContent>
       </AlertDialog>
     </KanbanColumn>
+  )
+}
+
+/** How a bucket orders its models, and whether it hedges slow ones. */
+function BucketStrategyRow({
+  settings,
+  onChange,
+}: {
+  settings: BucketSettings
+  onChange: (next: Partial<BucketSettings>) => void
+}) {
+  const strategy = STRATEGY_OPTIONS.find((o) => o.value === settings.strategy)
+  const hedge =
+    HEDGE_OPTIONS.find((o) => o.ms === settings.hedgeAfterMs)?.value ?? "off"
+  return (
+    <div className="grid gap-1.5">
+      <div className="grid grid-cols-2 gap-1.5">
+        <Select
+          value={settings.strategy}
+          onValueChange={(value) =>
+            onChange({ strategy: value as BucketSettings["strategy"] })
+          }
+        >
+          <SelectTrigger size="sm" className="w-full" aria-label="Order">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            {STRATEGY_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={hedge}
+          onValueChange={(value) =>
+            onChange({
+              hedgeAfterMs:
+                HEDGE_OPTIONS.find((o) => o.value === value)?.ms ?? null,
+            })
+          }
+        >
+          <SelectTrigger size="sm" className="w-full" aria-label="Hedging">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            {HEDGE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {strategy?.help}
+        {settings.strategy !== "ordered" &&
+          " The order below is the fallback when there's no data."}
+        {settings.hedgeAfterMs != null &&
+          ` If a model hasn't answered after ${settings.hedgeAfterMs / 1000} s, the next one starts too and the first to answer wins (you may pay for both).`}
+      </p>
+    </div>
   )
 }
 

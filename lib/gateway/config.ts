@@ -28,6 +28,8 @@ export interface ProviderRuntime {
   enabled: boolean
   /** null = shared provider; otherwise only this member's apps may use it. */
   ownerEmail: string | null
+  quotaRpm: number | null
+  quotaRpd: number | null
   credentials: ProviderCredentials
   /** Set when credentials could not be decrypted. */
   credentialError?: string
@@ -48,6 +50,12 @@ export interface HealthState {
   updatedAt: number
 }
 
+/** Recent median time to the first token (or full answer) per model. */
+export interface LatencyStat {
+  firstMs: number
+  samples: number
+}
+
 export interface GatewaySnapshot {
   providers: Map<string, ProviderRuntime>
   models: Map<string, ModelRuntime>
@@ -55,8 +63,13 @@ export interface GatewaySnapshot {
   modelsByUpstreamId: Map<string, ModelRuntime[]>
   routes: Map<string, RouteRuntime>
   health: Map<string, HealthState>
+  latency: Map<string, LatencyStat>
+  /** Free-tier quota calls this minute / UTC day: "scope:id:period" -> count. */
+  quotaUsage: Map<string, number>
   loadedAt: number
 }
+
+const LATENCY_WINDOW_MS = 6 * 60 * 60 * 1000
 
 const toNumber = (value: unknown) => (value == null ? null : Number(value))
 
@@ -86,7 +99,7 @@ export function invalidateGatewayConfig(): void {
 
 async function loadSnapshot(): Promise<GatewaySnapshot> {
   const db = supabaseAdmin()
-  const [providers, secrets, models, routes, targets, health] =
+  const [providers, secrets, models, routes, targets, health, latency, quota] =
     await Promise.all([
       db.from("providers").select("*"),
       db.from("provider_secrets").select("provider_id, ciphertext"),
@@ -94,6 +107,11 @@ async function loadSnapshot(): Promise<GatewaySnapshot> {
       db.from("routes").select("*"),
       db.from("route_targets").select("*").order("position"),
       db.from("model_health").select("*"),
+      // Optional: "fastest" buckets fall back to their listed order without it.
+      db.rpc("model_latency_stats", {
+        p_since: new Date(Date.now() - LATENCY_WINDOW_MS).toISOString(),
+      }),
+      db.rpc("current_quota_usage"),
     ])
   for (const result of [providers, secrets, models, routes, targets, health]) {
     if (result.error)
@@ -129,6 +147,8 @@ async function loadSnapshot(): Promise<GatewaySnapshot> {
       config: row.config ?? {},
       enabled: row.enabled,
       ownerEmail: row.owner_email ?? null,
+      quotaRpm: row.quota_rpm ?? null,
+      quotaRpd: row.quota_rpd ?? null,
       credentials,
       credentialError,
     })
@@ -180,6 +200,28 @@ async function loadSnapshot(): Promise<GatewaySnapshot> {
     })
   }
 
+  const latencyMap = new Map<string, LatencyStat>()
+  for (const row of (latency.data ?? []) as {
+    model_id: string
+    first_ms: number
+    samples: number
+  }[]) {
+    latencyMap.set(row.model_id, {
+      firstMs: Number(row.first_ms),
+      samples: Number(row.samples),
+    })
+  }
+
+  const quotaUsage = new Map<string, number>()
+  for (const row of (quota.data ?? []) as {
+    scope: string
+    scope_id: string
+    period: string
+    count: number
+  }[]) {
+    quotaUsage.set(`${row.scope}:${row.scope_id}:${row.period}`, row.count)
+  }
+
   return {
     providers: providerMap,
     models: modelMap,
@@ -187,6 +229,8 @@ async function loadSnapshot(): Promise<GatewaySnapshot> {
     modelsByUpstreamId: byUpstream,
     routes: routeMap,
     health: healthMap,
+    latency: latencyMap,
+    quotaUsage,
     loadedAt,
   }
 }

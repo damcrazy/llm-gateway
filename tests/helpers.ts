@@ -21,6 +21,8 @@ export function provider(
     config: { baseUrl: "http://upstream.test/v1" },
     enabled: true,
     ownerEmail: null,
+    quotaRpm: null,
+    quotaRpd: null,
     credentials: { apiKey: "sk-test" },
     ...overrides,
   }
@@ -49,6 +51,8 @@ export function model(
     created_at: new Date(0).toISOString(),
     updated_at: new Date(0).toISOString(),
     provider: p,
+    quota_rpm: null,
+    quota_rpd: null,
     ...overrides,
   }
 }
@@ -89,6 +93,8 @@ export function snapshot(
     modelsByUpstreamId: byUpstream,
     routes: new Map(routes.map((r) => [r.name, r])),
     health: new Map(),
+    latency: new Map(),
+    quotaUsage: new Map(),
     loadedAt: Date.now(),
   }
 }
@@ -102,6 +108,7 @@ export function app(overrides: Partial<GatewayApp> = {}): GatewayApp {
     enabled: true,
     default_model: null,
     only_bucket_models: false,
+    cache_ttl_seconds: null,
     buckets: [],
     monthly_budget_usd: null,
     rpm_limit: null,

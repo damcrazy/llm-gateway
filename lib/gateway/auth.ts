@@ -72,11 +72,17 @@ export function extractApiKey(request: Request): string | undefined {
 
 const OWNER_COLUMNS =
   "members(email, role, model_access, allowed_models, monthly_budget_usd)"
-const BUCKET_COLUMNS = "app_buckets(name, position, model_ids)"
+const BUCKET_COLUMNS =
+  "app_buckets(name, position, model_ids, strategy, hedge_after_ms)"
 
 type AppWithRelations = AppRow & {
   members: OwnerFields | null
-  app_buckets: Pick<AppBucketRow, "name" | "position" | "model_ids">[] | null
+  app_buckets:
+    | Pick<
+        AppBucketRow,
+        "name" | "position" | "model_ids" | "strategy" | "hedge_after_ms"
+      >[]
+    | null
 }
 
 function toGatewayApp(row: AppWithRelations): GatewayApp {
@@ -84,7 +90,12 @@ function toGatewayApp(row: AppWithRelations): GatewayApp {
     ...row,
     buckets: [...(row.app_buckets ?? [])]
       .sort((a, b) => a.position - b.position)
-      .map((bucket) => ({ name: bucket.name, model_ids: bucket.model_ids })),
+      .map((bucket) => ({
+        name: bucket.name,
+        model_ids: bucket.model_ids,
+        strategy: bucket.strategy ?? "ordered",
+        hedge_after_ms: bucket.hedge_after_ms ?? null,
+      })),
   }
 }
 
@@ -236,29 +247,51 @@ export async function authenticateRequest(
 }
 
 /** Per-app rate limit and budget, then the owner's monthly budget. */
+// Requests-per-minute without a database wait on every call. Each instance
+// counts its own requests exactly; the shared count in the database is bumped
+// in the background, and once it reports an app over its limit this instance
+// refuses that app until the minute ends. Across instances that allows a few
+// requests of overshoot, in exchange for no added latency.
+const localMinuteCounts = new Map<string, { minute: number; count: number }>()
+const overLimitUntil = new Map<string, number>()
+
+function rateLimitError(appName: string, limit: number) {
+  const retryAfter = 60 - new Date().getUTCSeconds()
+  return new GatewayError(
+    429,
+    `Rate limit of ${limit} requests per minute exceeded for app '${appName}'.`,
+    "rate_limit_exceeded",
+    "rate_limit_error",
+    { "Retry-After": String(retryAfter) }
+  )
+}
+
+function checkRateLimit(appId: string, appName: string, limit: number) {
+  const now = Date.now()
+  const minute = Math.floor(now / 60_000)
+  if ((overLimitUntil.get(appId) ?? 0) > now) {
+    throw rateLimitError(appName, limit)
+  }
+  const local = localMinuteCounts.get(appId)
+  const count = local?.minute === minute ? local.count + 1 : 1
+  if (localMinuteCounts.size >= MAX_CACHE_ENTRIES) localMinuteCounts.clear()
+  localMinuteCounts.set(appId, { minute, count })
+  if (count > limit) throw rateLimitError(appName, limit)
+
+  background(async () => {
+    const { data: allowed } = await supabaseAdmin().rpc("hit_rate_limit", {
+      p_app: appId,
+      p_limit: limit,
+    })
+    if (allowed === false) overLimitUntil.set(appId, (minute + 1) * 60_000)
+  })
+}
+
 export async function enforceLimits({
   app,
   owner,
 }: AuthContext): Promise<void> {
-  if (app.rpm_limit) {
-    const { data: allowed, error } = await supabaseAdmin().rpc(
-      "hit_rate_limit",
-      {
-        p_app: app.id,
-        p_limit: app.rpm_limit,
-      }
-    )
-    if (!error && allowed === false) {
-      const retryAfter = 60 - new Date().getUTCSeconds()
-      throw new GatewayError(
-        429,
-        `Rate limit of ${app.rpm_limit} requests per minute exceeded for app '${app.name}'.`,
-        "rate_limit_exceeded",
-        "rate_limit_error",
-        { "Retry-After": String(retryAfter) }
-      )
-    }
-  }
+  if (app.rpm_limit) checkRateLimit(app.id, app.name, app.rpm_limit)
 
   if (app.monthly_budget_usd != null) {
     const budget = Number(app.monthly_budget_usd)

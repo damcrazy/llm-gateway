@@ -151,6 +151,21 @@ bun run typecheck && bun run lint && bun run test
    - Turn on **Only allow models in these buckets** to stop the app's keys from calling anything else.
    - Changes save automatically and reach API calls within 30 seconds.
    - A bucket wins over a global route with the same name, for that app only. Admins can still define global **Routes** shared by every app.
+   - **Order** per bucket:
+     - **In order**: top to bottom.
+     - **Fastest first**: by each model's median time to first token over the last 6 hours; a model with fewer than 3 calls counts as average.
+     - **Cheapest first**: by price.
+     - **Spread evenly**: rotates the first model.
+   - **Hedging** (optional, per bucket): if the first model hasn't answered after 1–10 s, the next one starts too. The first to answer wins and the other is cancelled, without counting against its health. You may pay for both.
+4. **Response cache** (an app's Settings, off by default): an identical request (same model or bucket, messages, tools and settings) gets the stored answer instantly and for $0, for 5 minutes up to 7 days.
+   - Streaming clients get the cached answer streamed.
+   - Responses say `x-gateway-cache: HIT|MISS|BYPASS`.
+   - Clients can skip the lookup with `Cache-Control: no-cache`, or skip the cache entirely with `no-store`.
+   - Cached answers are kept in the `response_cache` table.
+5. **Free-tier quotas**: set request caps per minute and per day on a model, or on a provider for caps that cover all of its models (e.g. OpenRouter free).
+   - Once a cap is reached, buckets skip that model instead of calling it and getting a 429.
+   - If every option is capped, the client gets a 429 that names the quota, with `Retry-After`.
+   - Days reset at 00:00 UTC. Usage shows next to each model.
 
 ```python
 from langchain_openai import ChatOpenAI

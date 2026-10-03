@@ -48,6 +48,8 @@ async function loadProvider(providerId: string): Promise<ProviderRuntime> {
     config: row.config ?? {},
     enabled: row.enabled,
     ownerEmail: row.owner_email ?? null,
+    quotaRpm: row.quota_rpm ?? null,
+    quotaRpd: row.quota_rpd ?? null,
     credentials: await loadProviderCredentials(row.id),
   }
 }
