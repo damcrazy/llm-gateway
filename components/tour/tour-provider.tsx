@@ -17,7 +17,9 @@ import type { TourDefinition } from "./types"
 
 // Runs the guided tour for whatever is on screen. Pages (and tabs) declare
 // theirs with <PageTour id="…" />; a page and its open tab play as one tour
-// (page first). Tours start by themselves the first time they're seen
+// (page first). Tours start from the header's compass button; people who
+// turn on "Start tours automatically" (Account) also get each one the
+// first time they see it.
 // (unless turned off in Account) and replay from the header. Steps whose
 // element isn't on screen (admin-only parts, empty lists, a collapsed
 // sidebar) are skipped.
@@ -35,7 +37,7 @@ interface TourContextValue {
 
 const TourContext = createContext<TourContextValue | null>(null)
 
-/** Tests (and anyone) can switch automatic tours off for a whole browser. */
+/** Tests can force automatic tours off for a whole browser. */
 const GLOBAL_AUTO_KEY = "gw-tours-auto"
 const START_DELAY_MS = 700
 const WAIT_FOR_PAGE_MS = 5_000
@@ -94,9 +96,10 @@ export function TourProvider({
 
   useEffect(() => {
     // Read after mount: localStorage only exists in the browser.
-    const off =
-      read(`${prefix}:auto`) === "off" || read(GLOBAL_AUTO_KEY) === "off"
-    const timer = setTimeout(() => setAutoStartState(!off), 0)
+    // Off unless the person turned it on in Account.
+    const on =
+      read(`${prefix}:auto`) === "on" && read(GLOBAL_AUTO_KEY) !== "off"
+    const timer = setTimeout(() => setAutoStartState(on), 0)
     return () => clearTimeout(timer)
   }, [prefix])
 
@@ -209,7 +212,7 @@ export function TourProvider({
       register,
       autoStart,
       setAutoStart: (on) => {
-        write(`${prefix}:auto`, on ? null : "off")
+        write(`${prefix}:auto`, on ? "on" : null)
         if (on) write(GLOBAL_AUTO_KEY, null)
         setAutoStartState(on)
       },

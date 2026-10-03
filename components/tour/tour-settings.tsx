@@ -14,20 +14,18 @@ import {
 
 import { useTours } from "./tour-provider"
 
-/** Account page controls: automatic tours on or off, and replay all. */
+/** Account page controls: tours on first visit (off by default), replay all. */
 export function TourSettings() {
   const { autoStart, setAutoStart, resetSeen } = useTours()
   return (
     <div className="grid gap-4">
       <Field orientation="horizontal" data-tour="tour-auto">
         <FieldContent>
-          <FieldLabel htmlFor="tour-auto">
-            Show page tours automatically
-          </FieldLabel>
+          <FieldLabel htmlFor="tour-auto">Start tours automatically</FieldLabel>
           <FieldDescription>
-            The first time you open a page, a short tour points out what each
-            part does. You can always replay it with the compass button at the
-            top right.
+            Off by default: a page&apos;s tour only starts when you click the
+            compass button at the top right. Turn this on to have each
+            page&apos;s tour start the first time you open it.
           </FieldDescription>
         </FieldContent>
         <Switch
@@ -36,20 +34,21 @@ export function TourSettings() {
           onCheckedChange={setAutoStart}
         />
       </Field>
-      <div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            resetSeen()
-            setAutoStart(true)
-            toast.success("Tours will show again as you open each page")
-          }}
-        >
-          <RotateCcwIcon />
-          Show all tours again
-        </Button>
-      </div>
+      {autoStart && (
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              resetSeen()
+              toast.success("Tours will start again as you open each page")
+            }}
+          >
+            <RotateCcwIcon />
+            Show all tours again
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

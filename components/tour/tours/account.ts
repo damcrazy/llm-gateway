@@ -26,7 +26,7 @@ export const ACCOUNT_TOURS: TourDefinition[] = [
         target: "account-tours",
         side: "top",
         title: "Guided tours",
-        body: "Turn off the tours that start on each new page, or show them all again. The compass button at the top right replays the current page's tour whenever you like.",
+        body: "Tours only start when you click the compass at the top right. Turn this on if you'd rather have each page's tour start by itself the first time you open it.",
       },
     ],
   },

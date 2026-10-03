@@ -59,7 +59,7 @@ export const APPS_TOURS: TourDefinition[] = [
     steps: [
       {
         title: "An app's control panel",
-        body: "Everything about this project is on this page, split into tabs. Each tab has a short tour of its own the first time you open it.",
+        body: "Everything about this project is on this page, split into tabs. Each tab has a short tour too: open the tab, then click the compass at the top right.",
       },
       {
         target: "page-actions",

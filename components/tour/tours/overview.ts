@@ -11,7 +11,7 @@ export const OVERVIEW_TOURS: TourDefinition[] = [
     steps: [
       {
         title: "Welcome to your LLM gateway",
-        body: "Your apps send every AI request here instead of straight to OpenAI, Anthropic, Gemini and the rest. The gateway picks a model, switches to another one when a provider fails, enforces your limits, and records the cost of every call.<br><br>This short tour shows where things are. Use <b>Next</b> or the arrow keys; press Esc to skip.",
+        body: "Your apps send every AI request here instead of straight to OpenAI, Anthropic, Gemini and the rest. The gateway picks a model, switches to another one when a provider fails, enforces your limits, and records the cost of every call.<br><br>This short tour shows where things are. Use <b>Next</b> or the arrow keys; press Esc to close it.",
       },
       {
         target: "nav-group-monitor",
@@ -41,8 +41,8 @@ export const OVERVIEW_TOURS: TourDefinition[] = [
         target: "tour-button",
         side: "bottom",
         align: "end",
-        title: "Tours on every page",
-        body: "Each page has its own short tour that starts the first time you open it. Click the compass any time to see the current page's tour again. You can turn automatic tours off in <b>Account &amp; security</b>.",
+        title: "A tour for every page",
+        body: "Every page has a short tour like this one. Click the compass whenever you want the tour of the page you're on. If you'd like each page's tour to start by itself the first time you open it, turn that on in <b>Account &amp; security</b>.",
       },
       {
         target: "alerts-bell",
@@ -56,7 +56,7 @@ export const OVERVIEW_TOURS: TourDefinition[] = [
         side: "right",
         align: "end",
         title: "Your account",
-        body: "Change your password, add Google sign-in, manage your authenticator apps (two-factor sign-in is required for everyone), and turn guided tours on or off.",
+        body: "Change your password, add Google sign-in, manage your authenticator apps (two-factor sign-in is required for everyone), and choose whether tours start by themselves.",
       },
       {
         target: "overview-getting-started",
