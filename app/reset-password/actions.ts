@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { getSessionState } from "@/lib/auth"
 import { setUserPassword } from "@/lib/auth-users"
 import { passwordProblem } from "@/lib/password"
@@ -32,6 +33,12 @@ export async function completePasswordReset(
   } catch (error) {
     return actionError(error)
   }
+  await audit(
+    state.member.email,
+    "account.password_reset",
+    "Reset password with an emailed link",
+    { type: "account", id: state.member.id, name: state.member.email }
+  )
 
   // Sign out everywhere: sign in again with the new password (and 2FA).
   const supabase = await createClient()

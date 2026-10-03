@@ -1,10 +1,12 @@
 "use client"
 
 import { useRef, useState } from "react"
+import Link from "next/link"
 import {
   ArrowRightIcon,
   CircleAlertIcon,
   RotateCcwIcon,
+  ShieldCheckIcon,
   SnowflakeIcon,
 } from "lucide-react"
 
@@ -121,11 +123,37 @@ export function LogsTable({ logs }: { logs: LogView[] }) {
               </TableCell>
               <TableCell
                 className={cn(
-                  "max-w-40 truncate",
+                  "max-w-48",
                   !log.app_id && "text-muted-foreground"
                 )}
               >
-                {log.appName}
+                <span className="block truncate">{log.appName}</span>
+                {(log.tags?.length || log.pii_found?.length) && (
+                  <span className="mt-1 flex flex-wrap gap-1">
+                    {log.pii_found?.length ? (
+                      <Badge variant="outline" className="font-normal">
+                        <ShieldCheckIcon />
+                        {log.status === "error" && log.http_status === 400
+                          ? "PII blocked"
+                          : "PII redacted"}
+                      </Badge>
+                    ) : null}
+                    {log.tags?.slice(0, 3).map((tag) => (
+                      <Badge
+                        key={tag}
+                        variant="secondary"
+                        className="max-w-32 truncate font-normal"
+                      >
+                        {tag}
+                      </Badge>
+                    ))}
+                    {(log.tags?.length ?? 0) > 3 && (
+                      <Badge variant="secondary" className="font-normal">
+                        +{log.tags!.length - 3}
+                      </Badge>
+                    )}
+                  </span>
+                )}
               </TableCell>
               <TableCell>
                 <ModelCell log={log} />
@@ -173,7 +201,11 @@ export function LogsTable({ logs }: { logs: LogView[] }) {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="w-full gap-0 sm:max-w-2xl">
           {selected ? (
-            <LogDetails log={selected} payload={payload} />
+            <LogDetails
+              log={selected}
+              payload={payload}
+              onNavigate={() => setOpen(false)}
+            />
           ) : (
             <SheetHeader>
               <SheetTitle>Request</SheetTitle>
@@ -267,7 +299,16 @@ function Detail({
   )
 }
 
-function LogDetails({ log, payload }: { log: LogView; payload: PayloadState }) {
+function LogDetails({
+  log,
+  payload,
+  onNavigate,
+}: {
+  log: LogView
+  payload: PayloadState
+  /** Closes the sheet when a link inside it changes the page's filters. */
+  onNavigate: () => void
+}) {
   const attempts: AttemptLogEntry[] = Array.isArray(log.attempt_log)
     ? log.attempt_log
     : []
@@ -378,6 +419,46 @@ function LogDetails({ log, payload }: { log: LogView; payload: PayloadState }) {
               <Detail label="User agent" mono>
                 {log.user_agent ?? "—"}
               </Detail>
+              <Detail label="Tags">
+                {log.tags?.length ? (
+                  <span className="flex flex-wrap gap-1">
+                    {log.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" asChild>
+                        <Link
+                          href={`/logs?tag=${encodeURIComponent(tag)}`}
+                          onClick={onNavigate}
+                        >
+                          {tag}
+                        </Link>
+                      </Badge>
+                    ))}
+                  </span>
+                ) : (
+                  "—"
+                )}
+              </Detail>
+              <Detail label="End user" mono>
+                {log.end_user ?? "—"}
+              </Detail>
+              {log.metadata && Object.keys(log.metadata).length > 0 && (
+                <Detail label="Metadata" mono>
+                  <span className="grid gap-0.5">
+                    {Object.entries(log.metadata).map(([key, value]) => (
+                      <span key={key} className="break-all">
+                        {key}: {value}
+                      </span>
+                    ))}
+                  </span>
+                </Detail>
+              )}
+              {log.pii_found?.length ? (
+                <Detail label="Personal data">
+                  Found {log.pii_found.join(", ")};{" "}
+                  {log.status === "error" && log.http_status === 400
+                    ? "request refused"
+                    : "replaced before reaching the provider"}
+                </Detail>
+              ) : null}
             </dl>
           </section>
 

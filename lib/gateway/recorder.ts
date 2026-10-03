@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import type { CacheStatus } from "./cache"
 import type { ModelRuntime, RouteRuntime } from "./config"
 import type { Usage } from "./types"
+import { scrubDeep } from "./pii"
 import { costUsd } from "./usage"
 
 const MAX_PAYLOAD_STRING = 20_000
@@ -94,6 +95,13 @@ export class RequestRecorder {
   errorMessage?: string
   requestBody?: unknown
   responseBody?: unknown
+  /** Kinds of personal data found in the prompt (PII protection on). */
+  piiFound: string[] = []
+  /** Scrub personal data from stored payloads and exported traces. */
+  scrubPayloads = false
+  tags: string[] = []
+  endUser: string | null = null
+  metadata: Record<string, string> | null = null
   readonly userAgent: string | null
 
   constructor(
@@ -110,11 +118,13 @@ export class RequestRecorder {
     apiKeyId: string | null
     ownerEmail: string | null
     logPayloads: boolean
+    scrubPayloads?: boolean
   }) {
     this.appId = options.appId
     this.apiKeyId = options.apiKeyId
     this.ownerEmail = options.ownerEmail
     this.logPayloads = options.logPayloads
+    this.scrubPayloads = options.scrubPayloads ?? false
     this.shouldLog = true
   }
 
@@ -216,6 +226,11 @@ export class RequestRecorder {
     return (this.endedAt ?? Date.now()) - this.startedAt
   }
 
+  /** A payload as stored or exported: personal data scrubbed if the app asks. */
+  payload(value: unknown): unknown {
+    return this.scrubPayloads ? scrubDeep(value) : value
+  }
+
   async persist(): Promise<void> {
     await this.done
     if (!this.shouldLog) return
@@ -252,6 +267,10 @@ export class RequestRecorder {
       provider_ms: Math.round(timings.provider ?? 0),
       overhead_ms: Math.round(timings.overhead),
       user_agent: this.userAgent,
+      pii_found: this.piiFound.length ? this.piiFound : null,
+      tags: this.tags.length ? this.tags : null,
+      end_user: this.endUser,
+      metadata: this.metadata,
     })
     if (error) {
       console.error("[gateway] failed to write request log:", error.message)
@@ -260,8 +279,8 @@ export class RequestRecorder {
     if (this.logPayloads) {
       const { error: payloadError } = await db.from("request_payloads").insert({
         request_id: this.id,
-        request: redact(this.requestBody) ?? null,
-        response: redact(this.responseBody) ?? null,
+        request: redact(this.payload(this.requestBody)) ?? null,
+        response: redact(this.payload(this.responseBody)) ?? null,
       })
       if (payloadError)
         console.error(

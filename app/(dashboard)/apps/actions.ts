@@ -5,6 +5,7 @@ import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
 import { accessPolicy, canUseModel, describePolicy } from "@/lib/access"
+import { audit } from "@/lib/audit"
 import { requireMember, type SessionMember } from "@/lib/auth"
 import { generateApiKey } from "@/lib/crypto"
 import type { MemberRow, ModelRow } from "@/lib/db/types"
@@ -103,6 +104,13 @@ export async function createApp(
       : actionError(error)
   }
 
+  await audit(
+    me.email,
+    "app.create",
+    `Created app '${parsed.data.name}'`,
+    { type: "app", id: data.id as string, name: parsed.data.name },
+    { slug: parsed.data.slug, description: parsed.data.description }
+  )
   invalidateApiKeyCache()
   revalidateApp()
   return {
@@ -126,6 +134,13 @@ const settingsSchema = z.object({
     .positive("RPM limit must be greater than zero")
     .max(1_000_000, "RPM limit is too large")
     .nullable(),
+  tpmLimit: z
+    .number("Token limit must be a number")
+    .int("Token limit must be a whole number")
+    .positive("Token limit must be greater than zero")
+    .max(1_000_000_000, "Token limit is too large")
+    .nullable(),
+  piiMode: z.enum(["off", "redact", "block"]),
   logPayloads: z.boolean(),
   cacheTtlSeconds: z
     .number()
@@ -154,12 +169,21 @@ export async function updateAppSettings(
       description: s.description,
       monthly_budget_usd: s.monthlyBudgetUsd,
       rpm_limit: s.rpmLimit,
+      tpm_limit: s.tpmLimit,
+      pii_mode: s.piiMode,
       log_payloads: s.logPayloads,
       cache_ttl_seconds: s.cacheTtlSeconds,
     })
     .eq("id", id)
   if (error) return actionError(error)
 
+  await audit(
+    access.email,
+    "app.update",
+    `Changed settings of app '${s.name}'`,
+    { type: "app", id, name: s.name },
+    s
+  )
   invalidateApiKeyCache()
   revalidateApp(id)
   return { ok: true, message: "Settings saved" }
@@ -247,7 +271,9 @@ export async function saveAppBuckets(
     await Promise.all([
       db
         .from("apps")
-        .select("owner_email, members(role, model_access, allowed_models)")
+        .select(
+          "name, owner_email, members(role, model_access, allowed_models)"
+        )
         .eq("id", id)
         .maybeSingle(),
       modelIds.length
@@ -261,6 +287,7 @@ export async function saveAppBuckets(
     ])
   if (modelsError) return actionError(modelsError)
   const appRow = app as {
+    name: string
     owner_email: string
     members: OwnerAccess | null
   } | null
@@ -298,6 +325,21 @@ export async function saveAppBuckets(
   })
   if (error) return actionError(error)
 
+  await audit(
+    access.email,
+    "app.buckets",
+    `Changed buckets of app '${appRow.name}'`,
+    { type: "app", id, name: appRow.name },
+    {
+      buckets: value.buckets.map((b) => ({
+        name: b.name,
+        strategy: b.strategy,
+        models: b.modelIds.length,
+      })),
+      defaultBucket: value.defaultBucket,
+      onlyBucketModels: value.onlyBucketModels,
+    }
+  )
   invalidateApiKeyCache()
   revalidateApp(id)
   return { ok: true, message: "Buckets saved" }
@@ -310,12 +352,22 @@ export async function setAppEnabled(
   const access = await requireAppAccess(id)
   if (isDenied(access)) return access
 
-  const { error } = await supabaseAdmin()
+  const { data, error } = await supabaseAdmin()
     .from("apps")
     .update({ enabled: enabled === true })
     .eq("id", id)
+    .select("name")
   if (error) return actionError(error)
 
+  if (data?.length) {
+    const name = data[0].name as string
+    await audit(
+      access.email,
+      enabled ? "app.enable" : "app.disable",
+      `${enabled ? "Enabled" : "Disabled"} app '${name}'`,
+      { type: "app", id, name }
+    )
+  }
   invalidateApiKeyCache()
   revalidateApp(id)
   return {
@@ -330,9 +382,21 @@ export async function deleteApp(id: string): Promise<ActionResult> {
   const access = await requireAppAccess(id)
   if (isDenied(access)) return access
 
-  const { error } = await supabaseAdmin().from("apps").delete().eq("id", id)
+  const { data, error } = await supabaseAdmin()
+    .from("apps")
+    .delete()
+    .eq("id", id)
+    .select("name")
   if (error) return actionError(error)
 
+  if (data?.length) {
+    const name = data[0].name as string
+    await audit(access.email, "app.delete", `Deleted app '${name}'`, {
+      type: "app",
+      id,
+      name,
+    })
+  }
   invalidateApiKeyCache()
   // No revalidatePath here on purpose: revalidating makes Next re-render the
   // current page (/apps/[id]) in the action response, which would flash a
@@ -341,9 +405,30 @@ export async function deleteApp(id: string): Promise<ActionResult> {
   return { ok: true, message: "App and its keys deleted" }
 }
 
+const keyLimitsSchema = z.object({
+  rpmLimit: z
+    .number("Requests per minute must be a number")
+    .int("Requests per minute must be a whole number")
+    .positive("Requests per minute must be greater than zero")
+    .max(1_000_000, "Requests per minute is too large")
+    .nullable(),
+  tpmLimit: z
+    .number("Tokens per minute must be a number")
+    .int("Tokens per minute must be a whole number")
+    .positive("Tokens per minute must be greater than zero")
+    .max(1_000_000_000, "Tokens per minute is too large")
+    .nullable(),
+  monthlyBudgetUsd: z
+    .number("Budget must be a number")
+    .min(0, "Budget cannot be negative")
+    .max(10_000_000, "Budget is too large")
+    .nullable(),
+})
+
 const createKeySchema = z.object({
   name: nameSchema,
   expiry: z.enum(["never", "30", "90", "365"] satisfies ExpiryValue[]),
+  limits: keyLimitsSchema.optional(),
 })
 
 export async function createApiKey(
@@ -362,24 +447,86 @@ export async function createApiKey(
     : null
   const generated = generateApiKey()
 
-  const { error } = await supabaseAdmin().from("api_keys").insert({
-    app_id: appId,
-    name: parsed.data.name,
-    key_hash: generated.hash,
-    key_prefix: generated.prefix,
-    last_four: generated.lastFour,
-    expires_at: expiresAt,
-    created_by: me.email,
-  })
+  const { data, error } = await supabaseAdmin()
+    .from("api_keys")
+    .insert({
+      app_id: appId,
+      name: parsed.data.name,
+      key_hash: generated.hash,
+      key_prefix: generated.prefix,
+      last_four: generated.lastFour,
+      expires_at: expiresAt,
+      rpm_limit: parsed.data.limits?.rpmLimit ?? null,
+      tpm_limit: parsed.data.limits?.tpmLimit ?? null,
+      monthly_budget_usd: parsed.data.limits?.monthlyBudgetUsd ?? null,
+      created_by: me.email,
+    })
+    .select("id, apps(name)")
+    .single()
   if (error) {
     return error.code === "23503"
       ? { ok: false, error: "This app no longer exists" }
       : actionError(error)
   }
 
+  const appName =
+    (data.apps as unknown as { name: string } | null)?.name ?? appId
+  await audit(
+    me.email,
+    "key.create",
+    `Created key '${parsed.data.name}' for app '${appName}'`,
+    { type: "api_key", id: data.id as string, name: parsed.data.name },
+    {
+      appId,
+      expiresAt,
+      rpmLimit: parsed.data.limits?.rpmLimit ?? null,
+      tpmLimit: parsed.data.limits?.tpmLimit ?? null,
+      monthlyBudgetUsd: parsed.data.limits?.monthlyBudgetUsd ?? null,
+    }
+  )
   invalidateApiKeyCache()
   revalidateApp(appId)
   return { ok: true, data: { key: generated.key }, message: "Key created" }
+}
+
+export async function updateApiKeyLimits(
+  appId: string,
+  keyId: string,
+  input: z.input<typeof keyLimitsSchema>
+): Promise<ActionResult> {
+  const access = await requireAppAccess(appId)
+  if (isDenied(access)) return access
+  if (!idSchema.safeParse(keyId).success)
+    return { ok: false, error: "Unknown key" }
+  const parsed = keyLimitsSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) }
+
+  const { data, error } = await supabaseAdmin()
+    .from("api_keys")
+    .update({
+      rpm_limit: parsed.data.rpmLimit,
+      tpm_limit: parsed.data.tpmLimit,
+      monthly_budget_usd: parsed.data.monthlyBudgetUsd,
+    })
+    .eq("id", keyId)
+    .eq("app_id", appId)
+    .select("name, apps(name)")
+  if (error) return actionError(error)
+  if (!data?.length) return { ok: false, error: "Unknown key" }
+
+  const keyName = data[0].name as string
+  const appName =
+    (data[0].apps as unknown as { name: string } | null)?.name ?? appId
+  await audit(
+    access.email,
+    "key.limits",
+    `Changed limits of key '${keyName}' of app '${appName}'`,
+    { type: "api_key", id: keyId, name: keyName },
+    { appId, ...parsed.data }
+  )
+  invalidateApiKeyCache()
+  revalidateApp(appId)
+  return { ok: true, message: `Limits saved for ${data[0].name as string}` }
 }
 
 export async function revokeApiKey(
@@ -398,11 +545,21 @@ export async function revokeApiKey(
     .eq("id", keyId)
     .eq("app_id", appId)
     .is("revoked_at", null)
-    .select("name")
+    .select("name, apps(name)")
   if (error) return actionError(error)
   if (!data?.length)
     return { ok: false, error: "Key not found or already revoked" }
 
+  const keyName = data[0].name as string
+  const appName =
+    (data[0].apps as unknown as { name: string } | null)?.name ?? appId
+  await audit(
+    access.email,
+    "key.revoke",
+    `Revoked key '${keyName}' of app '${appName}'`,
+    { type: "api_key", id: keyId, name: keyName },
+    { appId }
+  )
   invalidateApiKeyCache()
   revalidateApp(appId)
   return { ok: true, message: `Revoked ${data[0].name as string}` }

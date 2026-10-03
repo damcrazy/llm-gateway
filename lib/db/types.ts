@@ -34,6 +34,10 @@ export interface AppRow {
   cache_ttl_seconds: number | null
   monthly_budget_usd: number | null
   rpm_limit: number | null
+  /** Tokens (in + out) per minute across the app's keys. */
+  tpm_limit: number | null
+  /** What to do with personal data and secrets found in prompts. */
+  pii_mode: PiiMode
   log_payloads: boolean
   /** The member who owns this app. */
   owner_email: string
@@ -43,6 +47,8 @@ export interface AppRow {
 }
 
 export type BucketStrategy = "ordered" | "fastest" | "cheapest" | "spread"
+
+export type PiiMode = "off" | "redact" | "block"
 
 /** A named, ordered chain of models an app calls like a model ("smart"). */
 export interface AppBucket {
@@ -78,6 +84,10 @@ export interface ApiKeyRow {
   expires_at: string | null
   revoked_at: string | null
   last_used_at: string | null
+  /** Limits for this key alone, on top of the app's. */
+  rpm_limit: number | null
+  tpm_limit: number | null
+  monthly_budget_usd: number | null
   created_by: string | null
   created_at: string
 }
@@ -221,6 +231,15 @@ export interface RequestLogRow {
   latency_ms: number | null
   ttft_ms: number | null
   user_agent: string | null
+  cache_hit: boolean | null
+  /** Kinds of personal data found in the prompt, when PII protection is on. */
+  pii_found: string[] | null
+  /** From the x-gateway-tags header. */
+  tags: string[] | null
+  /** The end user the client named (x-gateway-user, `user`, …). */
+  end_user: string | null
+  /** The request's `metadata` object (string values). */
+  metadata: Record<string, string> | null
 }
 
 export interface RequestPayloadRow {

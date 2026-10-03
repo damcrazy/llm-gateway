@@ -23,6 +23,8 @@ export interface LogFilters {
   app: string
   /** Served model slug, or "" for all models. */
   model: string
+  /** A request tag, or "" for any. */
+  tag: string
   range: RangeValue
   page: number
 }
@@ -31,6 +33,7 @@ export const DEFAULT_FILTERS: LogFilters = {
   status: "all",
   app: "",
   model: "",
+  tag: "",
   range: "24h",
   page: 1,
 }
@@ -49,6 +52,7 @@ export function parseFilters(params: SearchParams): LogFilters {
     status: status === "success" || status === "error" ? status : "all",
     app: first(params.app).slice(0, 100),
     model: first(params.model).slice(0, 200),
+    tag: first(params.tag).slice(0, 64),
     range: RANGES.some((r) => r.value === range)
       ? (range as RangeValue)
       : DEFAULT_FILTERS.range,
@@ -63,6 +67,7 @@ export function filtersToQuery(filters: LogFilters): string {
     params.set("status", filters.status)
   if (filters.app) params.set("app", filters.app)
   if (filters.model) params.set("model", filters.model)
+  if (filters.tag) params.set("tag", filters.tag)
   if (filters.range !== DEFAULT_FILTERS.range)
     params.set("range", filters.range)
   if (filters.page > 1) params.set("page", String(filters.page))

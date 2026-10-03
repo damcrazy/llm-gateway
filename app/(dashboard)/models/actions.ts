@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { requireMember } from "@/lib/auth"
 import {
   requireModelAccess,
@@ -84,6 +85,14 @@ export async function createModel(
       : actionError(error)
   }
 
+  const slug = `${provider.slug}/${parsed.data.model_id}`
+  await audit(
+    access.me.email,
+    "model.create",
+    `Added model '${slug}'`,
+    { type: "model", id: data.id as string, name: slug },
+    { providerId, ...parsed.data }
+  )
   afterModelChange(providerId)
   return {
     ok: true,
@@ -114,6 +123,13 @@ export async function updateModel(
   if (error) return actionError(error)
   if (!data) return { ok: false, error: "Model not found" }
 
+  await audit(
+    access.me.email,
+    "model.update",
+    `Changed settings of model '${data.slug}'`,
+    { type: "model", id, name: data.slug as string },
+    parsed.data
+  )
   afterModelChange(data.provider_id as string)
   return { ok: true, message: `Saved ${data.slug}` }
 }
@@ -138,6 +154,12 @@ export async function setModelEnabled(
   if (error) return actionError(error)
   if (!data) return { ok: false, error: "Model not found" }
 
+  await audit(
+    access.me.email,
+    enabled ? "model.enable" : "model.disable",
+    `${enabled ? "Enabled" : "Disabled"} model '${data.slug}'`,
+    { type: "model", id, name: data.slug as string }
+  )
   afterModelChange(data.provider_id as string)
   return {
     ok: true,
@@ -177,6 +199,15 @@ export async function setModelsEnabled(
     changed += data?.length ?? 0
   }
 
+  if (changed > 0) {
+    await audit(
+      access.me.email,
+      enabled ? "model.bulk_enable" : "model.bulk_disable",
+      `${enabled ? "Enabled" : "Disabled"} ${changed} model${changed === 1 ? "" : "s"}`,
+      { type: "model" },
+      { count: changed, ids: parsed.data.slice(0, 200) }
+    )
+  }
   afterModelChange()
   revalidatePath("/providers", "layout")
   return {
@@ -201,6 +232,14 @@ export async function deleteModel(id: string): Promise<ActionResult> {
     .maybeSingle()
   if (error) return actionError(error)
 
+  if (data) {
+    await audit(
+      access.me.email,
+      "model.delete",
+      `Deleted model '${data.slug}'`,
+      { type: "model", id, name: data.slug as string }
+    )
+  }
   afterModelChange(data?.provider_id as string | undefined)
   return { ok: true, message: data ? `Deleted ${data.slug}` : "Model deleted" }
 }
@@ -213,12 +252,23 @@ export async function resetModelHealth(id: string): Promise<ActionResult> {
   const access = await requireModelAccess(id)
   if (!access.ok) return access
 
-  const { error } = await supabaseAdmin()
+  const { data, error } = await supabaseAdmin()
     .from("model_health")
     .delete()
     .eq("model_id", id)
+    .select("models(slug)")
   if (error) return actionError(error)
 
+  if (data?.length) {
+    const slug =
+      (data[0].models as unknown as { slug: string } | null)?.slug ?? null
+    await audit(
+      access.me.email,
+      "model.reset_health",
+      `Reset health of model '${slug ?? id}'`,
+      { type: "model", id, name: slug }
+    )
+  }
   afterModelChange(await providerIdOf(id))
   return { ok: true, message: "Health reset. The model is back in rotation." }
 }

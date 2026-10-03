@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { requireMember } from "@/lib/auth"
 import type { ProviderConfig } from "@/lib/db/types"
 import { invalidateGatewayConfig } from "@/lib/gateway/config"
@@ -198,6 +199,19 @@ export async function createProvider(input: {
     return actionError(saveError)
   }
 
+  await audit(
+    me.email,
+    "provider.create",
+    `Added provider '${parsed.data.name}'`,
+    { type: "provider", id, name: parsed.data.name },
+    {
+      slug: parsed.data.slug,
+      type: preset.type,
+      preset: preset.id,
+      private: ownerEmail !== null,
+      config: config.value,
+    }
+  )
   afterProviderChange()
   return { ok: true, data: { id }, message: `${parsed.data.name} added` }
 }
@@ -245,6 +259,18 @@ export async function updateProvider(
     .eq("id", id)
   if (error) return actionError(error)
 
+  await audit(
+    access.me.email,
+    "provider.update",
+    `Changed settings of provider '${parsed.data.name}'`,
+    { type: "provider", id, name: parsed.data.name },
+    {
+      name: parsed.data.name,
+      config: cleaned.value,
+      quotaRpm: parsed.data.quotaRpm,
+      quotaRpd: parsed.data.quotaRpd,
+    }
+  )
   afterProviderChange(id)
   return { ok: true, message: "Provider saved" }
 }
@@ -265,6 +291,12 @@ export async function setProviderEnabled(
   if (error) return actionError(error)
   if (!data) return { ok: false, error: "Provider not found" }
 
+  await audit(
+    access.me.email,
+    enabled ? "provider.enable" : "provider.disable",
+    `${enabled ? "Enabled" : "Disabled"} provider '${data.name}'`,
+    { type: "provider", id, name: data.name as string }
+  )
   afterProviderChange(id)
   return {
     ok: true,
@@ -292,6 +324,13 @@ export async function replaceProviderCredentials(
     return actionError(error)
   }
 
+  await audit(
+    access.me.email,
+    "provider.credentials",
+    `Replaced credentials of provider '${existing.name}'`,
+    { type: "provider", id, name: existing.name },
+    { fields: Object.keys(credentials.value) }
+  )
   afterProviderChange(id)
   return { ok: true, message: "Credentials replaced" }
 }
@@ -308,6 +347,14 @@ export async function deleteProvider(id: string): Promise<ActionResult> {
     .maybeSingle()
   if (error) return actionError(error)
 
+  if (data) {
+    await audit(
+      access.me.email,
+      "provider.delete",
+      `Deleted provider '${data.name}'`,
+      { type: "provider", id, name: data.name as string }
+    )
+  }
   // No revalidatePath here: it would re-render the (now missing) provider's
   // page as a 404 before the client navigates away. Dynamic pages are
   // refetched on navigation anyway.
@@ -442,6 +489,15 @@ export async function importModels(
       : null,
   ].filter(Boolean)
 
+  if (imported > 0) {
+    await audit(
+      access.me.email,
+      "provider.import_models",
+      `Imported ${imported} model${imported === 1 ? "" : "s"} into provider '${provider.name}'`,
+      { type: "provider", id: providerId, name: provider.name },
+      { imported, alreadyExisted: existed, skippedInvalid: rejected.length }
+    )
+  }
   afterProviderChange(providerId)
   return {
     ok: true,

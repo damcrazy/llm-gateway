@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { requireMember, userHasPassword, verifiedTotpFactors } from "@/lib/auth"
 import { setUserPassword } from "@/lib/auth-users"
 import { passwordProblem } from "@/lib/password"
@@ -19,7 +20,8 @@ export async function removeAuthenticator(
   }
   try {
     const factors = await verifiedTotpFactors(me.id)
-    if (!factors.some((factor) => factor.id === factorId)) {
+    const factor = factors.find((f) => f.id === factorId)
+    if (!factor) {
       return { ok: false, error: "Unknown authenticator" }
     }
     if (factors.length <= 1) {
@@ -34,6 +36,13 @@ export async function removeAuthenticator(
       userId: me.id,
     })
     if (error) return actionError(error)
+    await audit(
+      me.email,
+      "account.mfa_remove",
+      "Removed an authenticator",
+      { type: "account", id: me.id, name: me.email },
+      { factorId, factorName: factor.friendly_name ?? null }
+    )
   } catch (error) {
     return actionError(error)
   }
@@ -61,6 +70,11 @@ export async function setPassword(password: string): Promise<ActionResult> {
   } catch (error) {
     return actionError(error)
   }
+  await audit(me.email, "account.password_set", "Added a password", {
+    type: "account",
+    id: me.id,
+    name: me.email,
+  })
   revalidatePath("/account")
   return {
     ok: true,

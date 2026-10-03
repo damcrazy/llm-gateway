@@ -20,8 +20,18 @@ export interface KeyOwner {
   monthlyBudgetUsd: number | null
 }
 
+/** The API key a request used, with its own limits. */
+export interface KeyContext {
+  id: string
+  name: string
+  rpmLimit: number | null
+  tpmLimit: number | null
+  monthlyBudgetUsd: number | null
+}
+
 export interface AuthContext {
   keyId: string
+  key: KeyContext
   app: GatewayApp
   owner: KeyOwner
 }
@@ -125,7 +135,18 @@ export async function loadAppContext(
   if (error) throw new Error(error.message)
   const row = data as AppWithRelations | null
   if (!row?.members) return null
-  return { keyId: "", app: toGatewayApp(row), owner: toKeyOwner(row.members) }
+  return {
+    keyId: "",
+    key: {
+      id: "",
+      name: "playground",
+      rpmLimit: null,
+      tpmLimit: null,
+      monthlyBudgetUsd: null,
+    },
+    app: toGatewayApp(row),
+    owner: toKeyOwner(row.members),
+  }
 }
 
 async function lookupKey(hash: string): Promise<CachedKey | null> {
@@ -135,7 +156,7 @@ async function lookupKey(hash: string): Promise<CachedKey | null> {
   const { data, error } = await supabaseAdmin()
     .from("api_keys")
     .select(
-      `id, revoked_at, expires_at, apps(*, ${OWNER_COLUMNS}, ${BUCKET_COLUMNS})`
+      `id, name, revoked_at, expires_at, rpm_limit, tpm_limit, monthly_budget_usd, apps(*, ${OWNER_COLUMNS}, ${BUCKET_COLUMNS})`
     )
     .eq("key_hash", hash)
     .maybeSingle()
@@ -149,8 +170,12 @@ async function lookupKey(hash: string): Promise<CachedKey | null> {
 
   const row = data as {
     id: string
+    name: string
     revoked_at: string | null
     expires_at: string | null
+    rpm_limit: number | null
+    tpm_limit: number | null
+    monthly_budget_usd: number | null
     apps: AppWithRelations | null
   } | null
   // An app always has an owner; without one (removed member) the key is dead.
@@ -159,6 +184,16 @@ async function lookupKey(hash: string): Promise<CachedKey | null> {
     row?.apps && owner
       ? {
           keyId: row.id,
+          key: {
+            id: row.id,
+            name: row.name,
+            rpmLimit: row.rpm_limit,
+            tpmLimit: row.tpm_limit,
+            monthlyBudgetUsd:
+              row.monthly_budget_usd == null
+                ? null
+                : Number(row.monthly_budget_usd),
+          },
           app: toGatewayApp(row.apps),
           owner: toKeyOwner(owner),
           revokedAt: row.revoked_at,
@@ -180,24 +215,34 @@ function monthStartUtc(): string {
 /** This month's spend for an app or a member (cached for a minute). */
 /** This month's spend; `fresh` skips (and refreshes) the minute-long cache. */
 export async function monthlySpend(
-  scope: { app: string } | { member: string },
+  scope: { app: string } | { member: string } | { key: string },
   { fresh = false } = {}
 ): Promise<number> {
   const cacheKey =
-    "app" in scope ? `app:${scope.app}` : `member:${scope.member}`
+    "app" in scope
+      ? `app:${scope.app}`
+      : "key" in scope
+        ? `key:${scope.key}`
+        : `member:${scope.member}`
   const cached = spendCache.get(cacheKey)
   if (!fresh && cached && Date.now() - cached.at < SPEND_CACHE_TTL_MS)
     return cached.spend
+  const since = monthStartUtc()
   const { data, error } =
     "app" in scope
       ? await supabaseAdmin().rpc("app_spend_since", {
           p_app: scope.app,
-          p_since: monthStartUtc(),
+          p_since: since,
         })
-      : await supabaseAdmin().rpc("member_spend_since", {
-          p_email: scope.member,
-          p_since: monthStartUtc(),
-        })
+      : "key" in scope
+        ? await supabaseAdmin().rpc("key_spend_since", {
+            p_key: scope.key,
+            p_since: since,
+          })
+        : await supabaseAdmin().rpc("member_spend_since", {
+            p_email: scope.member,
+            p_since: since,
+          })
   const spend = error ? (cached?.spend ?? 0) : Number(data ?? 0)
   spendCache.set(cacheKey, { at: Date.now(), spend })
   return spend
@@ -246,78 +291,145 @@ export async function authenticateRequest(
   }
 
   touch(found.keyId)
-  return { keyId: found.keyId, app, owner: found.owner }
+  return { keyId: found.keyId, key: found.key, app, owner: found.owner }
 }
 
-/** Per-app rate limit and budget, then the owner's monthly budget. */
-// Requests-per-minute without a database wait on every call. Each instance
-// counts its own requests exactly; the shared count in the database is bumped
-// in the background, and once it reports an app over its limit this instance
-// refuses that app until the minute ends. Across instances that allows a few
-// requests of overshoot, in exchange for no added latency.
+// Requests and tokens per minute without a database wait on every call.
+// Each instance counts its own usage exactly; the shared count in the
+// database is bumped in the background, and once it reports a scope (an app
+// or a key) over its limit this instance refuses it until the minute ends.
+// Across instances that allows a little overshoot, in exchange for no added
+// latency. Tokens are only known after a response, so the request that goes
+// over the token limit still finishes; the next ones are refused.
 const localMinuteCounts = new Map<string, { minute: number; count: number }>()
 const overLimitUntil = new Map<string, number>()
+const localMinuteTokens = new Map<string, { minute: number; tokens: number }>()
+const overTokensUntil = new Map<string, number>()
 
-function rateLimitError(appName: string, limit: number) {
+const appSubject = (app: GatewayApp) => `app '${app.name}'`
+const keySubject = (key: KeyContext) => `API key '${key.name}'`
+
+function limitError(message: string) {
   const retryAfter = 60 - new Date().getUTCSeconds()
   return new GatewayError(
     429,
-    `Rate limit of ${limit} requests per minute exceeded for app '${appName}'.`,
+    message,
     "rate_limit_exceeded",
     "rate_limit_error",
     { "Retry-After": String(retryAfter) }
   )
 }
 
-function checkRateLimit(appId: string, appName: string, limit: number) {
+function checkRateLimit(scopeId: string, subject: string, limit: number) {
+  const error = () =>
+    limitError(
+      `Rate limit of ${limit} requests per minute exceeded for ${subject}.`
+    )
   const now = Date.now()
   const minute = Math.floor(now / 60_000)
-  if ((overLimitUntil.get(appId) ?? 0) > now) {
-    throw rateLimitError(appName, limit)
-  }
-  const local = localMinuteCounts.get(appId)
+  if ((overLimitUntil.get(scopeId) ?? 0) > now) throw error()
+  const local = localMinuteCounts.get(scopeId)
   const count = local?.minute === minute ? local.count + 1 : 1
   if (localMinuteCounts.size >= MAX_CACHE_ENTRIES) localMinuteCounts.clear()
-  localMinuteCounts.set(appId, { minute, count })
-  if (count > limit) throw rateLimitError(appName, limit)
+  localMinuteCounts.set(scopeId, { minute, count })
+  if (count > limit) throw error()
 
   background(async () => {
+    // Request counters are keyed by id, so an app and a key never collide.
     const { data: allowed } = await supabaseAdmin().rpc("hit_rate_limit", {
-      p_app: appId,
+      p_app: scopeId,
       p_limit: limit,
     })
-    if (allowed === false) overLimitUntil.set(appId, (minute + 1) * 60_000)
+    if (allowed === false) overLimitUntil.set(scopeId, (minute + 1) * 60_000)
   })
 }
 
+function checkTokenLimit(scopeId: string, subject: string, limit: number) {
+  const now = Date.now()
+  const minute = Math.floor(now / 60_000)
+  const local = localMinuteTokens.get(scopeId)
+  if (
+    (overTokensUntil.get(scopeId) ?? 0) > now ||
+    (local?.minute === minute && local.tokens >= limit)
+  ) {
+    throw limitError(
+      `Token limit of ${limit.toLocaleString("en-US")} tokens per minute reached for ${subject}.`
+    )
+  }
+}
+
+/** Counts a finished request's tokens against the app's and key's limits. */
+export function recordTokens(auth: AuthContext, tokens: number): void {
+  if (tokens <= 0) return
+  const scopes: [string, number][] = []
+  if (auth.app.tpm_limit) scopes.push([auth.app.id, auth.app.tpm_limit])
+  if (auth.key.tpmLimit && auth.key.id)
+    scopes.push([auth.key.id, auth.key.tpmLimit])
+  if (!scopes.length) return
+  const minute = Math.floor(Date.now() / 60_000)
+  for (const [scopeId, limit] of scopes) {
+    const local = localMinuteTokens.get(scopeId)
+    const total = (local?.minute === minute ? local.tokens : 0) + tokens
+    if (localMinuteTokens.size >= MAX_CACHE_ENTRIES) localMinuteTokens.clear()
+    localMinuteTokens.set(scopeId, { minute, tokens: total })
+    background(async () => {
+      const { data } = await supabaseAdmin().rpc("add_tokens", {
+        p_scope: scopeId,
+        p_tokens: Math.min(tokens, 2_000_000_000),
+      })
+      if (Number(data) >= limit)
+        overTokensUntil.set(scopeId, (minute + 1) * 60_000)
+    })
+  }
+}
+
+function budgetError(message: string) {
+  return new GatewayError(403, message, "budget_exceeded", "permission_error")
+}
+
+/**
+ * Per-app and per-key requests and tokens per minute, then the app's, the
+ * key's and the owner's monthly budgets.
+ */
+
 export async function enforceLimits({
   app,
+  key,
   owner,
 }: AuthContext): Promise<void> {
-  if (app.rpm_limit) checkRateLimit(app.id, app.name, app.rpm_limit)
+  if (app.tpm_limit) checkTokenLimit(app.id, appSubject(app), app.tpm_limit)
+  if (key.id && key.tpmLimit)
+    checkTokenLimit(key.id, keySubject(key), key.tpmLimit)
+  if (key.id && key.rpmLimit)
+    checkRateLimit(key.id, keySubject(key), key.rpmLimit)
+  if (app.rpm_limit) checkRateLimit(app.id, appSubject(app), app.rpm_limit)
 
-  if (app.monthly_budget_usd != null) {
+  const [appSpend, keySpend, ownerSpend] = await Promise.all([
+    app.monthly_budget_usd != null ? monthlySpend({ app: app.id }) : null,
+    key.id && key.monthlyBudgetUsd != null
+      ? monthlySpend({ key: key.id })
+      : null,
+    owner.monthlyBudgetUsd != null
+      ? monthlySpend({ member: owner.email })
+      : null,
+  ])
+
+  if (appSpend !== null) {
     const budget = Number(app.monthly_budget_usd)
-    const spend = await monthlySpend({ app: app.id })
-    if (spend >= budget) {
-      throw new GatewayError(
-        403,
-        `App '${app.name}' reached its monthly budget of $${budget.toFixed(2)}.`,
-        "budget_exceeded",
-        "permission_error"
+    if (appSpend >= budget) {
+      throw budgetError(
+        `App '${app.name}' reached its monthly budget of $${budget.toFixed(2)}.`
       )
     }
   }
-
-  if (owner.monthlyBudgetUsd != null) {
-    const spend = await monthlySpend({ member: owner.email })
-    if (spend >= owner.monthlyBudgetUsd) {
-      throw new GatewayError(
-        403,
-        `Your account reached its monthly budget of $${owner.monthlyBudgetUsd.toFixed(2)}. Ask the gateway owner to raise it.`,
-        "budget_exceeded",
-        "permission_error"
-      )
-    }
+  if (keySpend !== null && keySpend >= key.monthlyBudgetUsd!) {
+    throw budgetError(
+      `API key '${key.name}' reached its monthly budget of $${key.monthlyBudgetUsd!.toFixed(2)}.`
+    )
+  }
+  if (ownerSpend !== null && ownerSpend >= owner.monthlyBudgetUsd!) {
+    throw budgetError(
+      `Your account reached its monthly budget of $${owner.monthlyBudgetUsd!.toFixed(2)}. Ask the gateway owner to raise it.`
+    )
   }
 }

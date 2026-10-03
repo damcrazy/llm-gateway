@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { requireMember } from "@/lib/auth"
 import { encryptSecret } from "@/lib/crypto"
 import {
@@ -58,6 +59,23 @@ export async function saveAlertSettings(
   } catch (error) {
     return actionError(error)
   }
+  await audit(
+    me.email,
+    "alerts.settings",
+    "Changed alert settings",
+    { type: "alerts", name: me.email },
+    {
+      budgetPercent,
+      notifyModelDown,
+      latencyThresholdMs,
+      webhook:
+        webhookUrl === undefined
+          ? "unchanged"
+          : webhookUrl
+            ? "added or replaced"
+            : "removed",
+    }
+  )
   forgetAlertSettings(me.email)
   revalidatePath("/alerts")
   return { ok: true, message: "Alert settings saved" }

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { getSessionState, pathForState, requireMember } from "@/lib/auth"
 import { env } from "@/lib/env"
 import { setUserPassword } from "@/lib/auth-users"
@@ -18,6 +19,13 @@ import { createClient } from "@/lib/supabase/server"
 export async function finishSignIn(): Promise<ActionResult> {
   const state = await getSessionState()
   if (state.status !== "signed_out" && state.status !== "not_member") {
+    await audit(
+      state.member.email,
+      "account.sign_in",
+      "Signed in with password",
+      { type: "account", id: state.member.id, name: state.member.email },
+      { method: "password", next: state.status }
+    )
     redirect(pathForState(state))
   }
   const supabase = await createClient()
@@ -68,5 +76,10 @@ export async function changePassword(
   } catch (error) {
     return actionError(error)
   }
+  await audit(me.email, "account.password_change", "Changed password", {
+    type: "account",
+    id: me.id,
+    name: me.email,
+  })
   return { ok: true, message: "Password updated" }
 }

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 
+import { audit } from "@/lib/audit"
 import { getOrigin } from "@/lib/auth"
 import { keepOnlyMembers } from "@/lib/auth-session"
 import { safeNextPath } from "@/lib/safe-next"
@@ -33,6 +34,25 @@ export async function GET(request: NextRequest) {
   }
   if (!(await keepOnlyMembers(data.user))) {
     return NextResponse.redirect(`${origin}/login?error=forbidden`)
+  }
+  if (data.user.email) {
+    // The newest sign-in method on this session: "oauth" for Google.
+    const { data: claims } = await supabase.auth.getClaims()
+    const amr = Array.isArray(claims?.claims.amr)
+      ? (claims.claims.amr as { method?: string; timestamp?: number }[])
+      : []
+    const method =
+      [...amr].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))[0]
+        ?.method ?? "unknown"
+    await audit(
+      data.user.email,
+      "account.sign_in",
+      method === "oauth"
+        ? "Signed in with Google"
+        : "Signed in with an email link",
+      { type: "account", id: data.user.id, name: data.user.email },
+      { method: method === "oauth" ? "google" : method }
+    )
   }
 
   // The dashboard layout sends people on to 2FA setup or the 2FA challenge.

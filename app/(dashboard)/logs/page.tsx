@@ -102,6 +102,7 @@ export default async function LogsPage({ searchParams }: Props) {
     if (filters.app === DASHBOARD_APP) query = query.is("app_id", null)
     else if (appId) query = query.eq("app_id", appId)
     if (modelId) query = query.eq("model_id", modelId)
+    if (filters.tag) query = query.contains("tags", [filters.tag])
 
     const { data, count, error } = await query
       .order("created_at", { ascending: false })

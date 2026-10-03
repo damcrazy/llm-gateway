@@ -218,12 +218,12 @@ export async function checkAfterRequest(
 
 async function checkBudgets(
   recorder: RequestRecorder,
-  { app, owner }: AuthContext
+  { app, key, owner }: AuthContext
 ) {
   if (recorder.costUsd <= 0) return
   const checks: {
     key: string
-    scope: { app: string } | { member: string }
+    scope: { app: string } | { member: string } | { key: string }
     budget: number
     email: string
     label: string
@@ -236,6 +236,16 @@ async function checkBudgets(
       budget: Number(app.monthly_budget_usd),
       email: app.owner_email,
       label: `App '${app.name}'`,
+      appId: app.id,
+    })
+  }
+  if (key.id && key.monthlyBudgetUsd != null) {
+    checks.push({
+      key: `key:${key.id}`,
+      scope: { key: key.id },
+      budget: key.monthlyBudgetUsd,
+      email: app.owner_email,
+      label: `API key '${key.name}' of app '${app.name}'`,
       appId: app.id,
     })
   }

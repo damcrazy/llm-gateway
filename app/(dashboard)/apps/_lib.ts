@@ -41,9 +41,44 @@ export function startOfMonthUtc(): string {
 
 /** Columns of api_keys that are safe to send to the dashboard (no key_hash). */
 export const API_KEY_COLUMNS =
-  "id, app_id, name, key_prefix, last_four, expires_at, revoked_at, last_used_at, created_by, created_at"
+  "id, app_id, name, key_prefix, last_four, expires_at, revoked_at, last_used_at, rpm_limit, tpm_limit, monthly_budget_usd, created_by, created_at"
 
 export type ApiKeyListRow = Omit<ApiKeyRow, "key_hash">
+
+/** A key's own limits (null = only the app's limit applies). */
+export interface KeyLimits {
+  rpmLimit: number | null
+  tpmLimit: number | null
+  monthlyBudgetUsd: number | null
+}
+
+export function keyLimits(
+  key: Pick<ApiKeyRow, "rpm_limit" | "tpm_limit" | "monthly_budget_usd">
+): KeyLimits {
+  return {
+    rpmLimit: key.rpm_limit,
+    tpmLimit: key.tpm_limit,
+    monthlyBudgetUsd:
+      key.monthly_budget_usd == null ? null : Number(key.monthly_budget_usd),
+  }
+}
+
+/** "60 req/min · 100K tokens/min · $5.00/month", or null without limits. */
+export function describeKeyLimits(limits: KeyLimits): string | null {
+  const compact = new Intl.NumberFormat("en-US", { notation: "compact" })
+  const parts = [
+    limits.rpmLimit != null
+      ? `${compact.format(limits.rpmLimit)} req/min`
+      : null,
+    limits.tpmLimit != null
+      ? `${compact.format(limits.tpmLimit)} tokens/min`
+      : null,
+    limits.monthlyBudgetUsd != null
+      ? `$${limits.monthlyBudgetUsd.toFixed(2)}/month`
+      : null,
+  ].filter(Boolean)
+  return parts.length ? parts.join(" · ") : null
+}
 
 export type KeyStatus = "active" | "revoked" | "expired"
 

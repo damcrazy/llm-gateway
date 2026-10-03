@@ -19,8 +19,16 @@ import {
 } from "@/components/ui/table"
 import { formatDateTime, formatRelative } from "@/lib/format"
 
-import { keyStatus, maskKey, type ApiKeyListRow, type KeyStatus } from "../_lib"
+import {
+  describeKeyLimits,
+  keyLimits,
+  keyStatus,
+  maskKey,
+  type ApiKeyListRow,
+  type KeyStatus,
+} from "../_lib"
 import { CreateKeyDialog, RevokeKeyButton } from "./app-controls"
+import { KeyLimitsDialog } from "./key-limits"
 
 const STATUS_BADGE: Record<
   KeyStatus,
@@ -69,8 +77,9 @@ export function KeysSection({
                   <TableHead>Created</TableHead>
                   <TableHead>Last used</TableHead>
                   <TableHead>Expires</TableHead>
+                  <TableHead>Limits</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-24 pr-6" />
+                  <TableHead className="w-48 pr-6" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -101,16 +110,27 @@ export function KeysSection({
                           ? formatDateTime(key.expires_at)
                           : "Never"}
                       </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {describeKeyLimits(keyLimits(key)) ?? "App limits"}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={badge.variant}>{badge.label}</Badge>
                       </TableCell>
                       <TableCell className="pr-6 text-right">
                         {status !== "revoked" && (
-                          <RevokeKeyButton
-                            appId={appId}
-                            keyId={key.id}
-                            name={key.name}
-                          />
+                          <div className="flex justify-end gap-1">
+                            <KeyLimitsDialog
+                              appId={appId}
+                              keyId={key.id}
+                              name={key.name}
+                              limits={keyLimits(key)}
+                            />
+                            <RevokeKeyButton
+                              appId={appId}
+                              keyId={key.id}
+                              name={key.name}
+                            />
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>

@@ -6,7 +6,7 @@ import type { CacheOptions } from "./cache"
 
 import { after } from "next/server"
 
-import { authenticateRequest, enforceLimits } from "./auth"
+import { authenticateRequest, enforceLimits, recordTokens } from "./auth"
 import type { ModelRuntime } from "./config"
 import { getSnapshot } from "./config"
 import { ClientAbortError, GatewayError, toUpstreamError } from "./errors"
@@ -19,6 +19,7 @@ import {
 import { checkAfterRequest } from "./alerts"
 import { exportTrace } from "./export"
 import { RequestRecorder } from "./recorder"
+import { captureRequestContext } from "./tags"
 import {
   chatToResponses,
   chunksToResponsesEvents,
@@ -190,9 +191,16 @@ async function begin(request: Request, recorder: RequestRecorder) {
     apiKeyId: auth.keyId,
     ownerEmail: auth.owner.email,
     logPayloads: auth.app.log_payloads,
+    scrubPayloads: auth.app.pii_mode !== "off",
   })
   after(async () => {
     await recorder.persist()
+    // Provider tokens count toward per-minute token limits (cache hits don't).
+    if (recorder.usage && recorder.cacheStatus !== "HIT")
+      recordTokens(
+        auth,
+        recorder.usage.inputTokens + recorder.usage.outputTokens
+      )
     await Promise.all([
       checkAfterRequest(recorder, auth),
       exportTrace(recorder, auth),
@@ -220,6 +228,7 @@ export async function handleChatCompletions(
         "invalid_request"
       )
     }
+    captureRequestContext(recorder, request, body)
     if (recorder.logPayloads) recorder.requestBody = body
 
     const execution = await executeChat({
@@ -296,6 +305,7 @@ export async function handleResponses(request: Request): Promise<Response> {
         "invalid_request"
       )
     }
+    captureRequestContext(recorder, request, body)
     if (recorder.logPayloads) recorder.requestBody = body
 
     const chatRequest = responsesToChat(body)
@@ -353,6 +363,7 @@ export async function handleMessages(request: Request): Promise<Response> {
         "invalid_request"
       )
     }
+    captureRequestContext(recorder, request, body)
     if (recorder.logPayloads) recorder.requestBody = body
 
     const chatRequest = anthropicToChat(body)
@@ -428,6 +439,7 @@ export async function handleEmbeddings(request: Request): Promise<Response> {
     ) {
       throw new GatewayError(400, "`input` is required.", "invalid_request")
     }
+    captureRequestContext(recorder, request, body)
     if (recorder.logPayloads)
       recorder.requestBody = { ...body, input: "[omitted]" }
     const { response, model } = await executeEmbeddings({

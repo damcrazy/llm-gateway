@@ -21,6 +21,7 @@ import {
   toUpstreamError,
 } from "./errors"
 import { decideOnFailure, recordFailure, recordSuccess } from "./health"
+import { describePii, scrubChatRequest, scrubText, type PiiKind } from "./pii"
 import { noteProviderCall } from "./quota"
 import type { RequestRecorder } from "./recorder"
 import { resolveModel, type Resolution } from "./router"
@@ -397,6 +398,48 @@ type ChatOutput =
 
 export type ChatExecution = ChatOutput & { model: ModelRuntime }
 
+function piiError(found: PiiKind[]) {
+  return new GatewayError(
+    400,
+    `This app doesn't accept prompts containing ${describePii(found)}. Remove it and try again.`,
+    "pii_detected"
+  )
+}
+
+/** Applies the app's PII setting: unchanged, scrubbed, or refused. */
+function protectChat(
+  app: GatewayApp | null,
+  request: ChatRequest,
+  recorder: RequestRecorder
+): ChatRequest {
+  const mode = app?.pii_mode ?? "off"
+  if (mode === "off") return request
+  const { request: scrubbed, found } = scrubChatRequest(request)
+  if (!found.length) return request
+  recorder.piiFound = found
+  if (mode === "block") throw piiError(found)
+  return scrubbed
+}
+
+function protectEmbeddings(
+  app: GatewayApp | null,
+  request: EmbeddingsRequest,
+  recorder: RequestRecorder
+): EmbeddingsRequest {
+  const mode = app?.pii_mode ?? "off"
+  if (mode === "off") return request
+  const found = new Set<PiiKind>()
+  const scrub = (item: unknown) =>
+    typeof item === "string" ? scrubText(item, found) : item
+  const input = Array.isArray(request.input)
+    ? (request.input as unknown[]).map(scrub)
+    : scrub(request.input)
+  if (!found.size) return request
+  recorder.piiFound = [...found]
+  if (mode === "block") throw piiError([...found])
+  return { ...request, input: input as EmbeddingsRequest["input"] }
+}
+
 export async function executeChat(options: {
   request: ChatRequest
   app: GatewayApp | null
@@ -408,7 +451,8 @@ export async function executeChat(options: {
   signal: AbortSignal
   recorder: RequestRecorder
 }): Promise<ChatExecution> {
-  const { request, recorder } = options
+  const { recorder } = options
+  const request = protectChat(options.app, options.request, recorder)
   recorder.requestedModel = request.model || undefined
   recorder.stream = Boolean(request.stream)
   const snapshot = await getSnapshot()
@@ -620,7 +664,8 @@ export async function executeEmbeddings(options: {
   signal: AbortSignal
   recorder: RequestRecorder
 }): Promise<{ response: EmbeddingsResponse; model: ModelRuntime }> {
-  const { request, recorder } = options
+  const { recorder } = options
+  const request = protectEmbeddings(options.app, options.request, recorder)
   recorder.requestedModel = request.model || undefined
   const snapshot = await getSnapshot()
   const resolution = resolveModel(

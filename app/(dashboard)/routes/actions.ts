@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { requireAdmin } from "@/lib/auth"
 import { invalidateGatewayConfig } from "@/lib/gateway/config"
 import { supabaseAdmin } from "@/lib/supabase/admin"
@@ -59,7 +60,7 @@ export async function createRoute(input: {
   kind: string
   strategy: string
 }): Promise<ActionResult<{ id: string }>> {
-  await requireAdmin()
+  const me = await requireAdmin()
   const parsed = createSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) }
   const { name, description, kind, strategy } = parsed.data
@@ -76,6 +77,13 @@ export async function createRoute(input: {
   }
 
   const id = (data as { id: string }).id
+  await audit(
+    me.email,
+    "route.create",
+    `Created route '${name}'`,
+    { type: "route", id, name },
+    { description, kind, strategy }
+  )
   refresh(id)
   return {
     ok: true,
@@ -115,7 +123,7 @@ export async function updateRouteSettings(
   routeId: string,
   input: RouteSettingsInput
 ): Promise<ActionResult> {
-  await requireAdmin()
+  const me = await requireAdmin()
   const id = idSchema.safeParse(routeId)
   if (!id.success) return { ok: false, error: "Route not found" }
   const parsed = settingsSchema.safeParse(input)
@@ -135,11 +143,19 @@ export async function updateRouteSettings(
       enabled: settings.enabled,
     })
     .eq("id", id.data)
-    .select("id")
+    .select("id, name")
     .maybeSingle()
   if (error) return actionError(error)
   if (!data) return { ok: false, error: "Route not found" }
 
+  const name = (data as { name: string }).name
+  await audit(
+    me.email,
+    "route.update",
+    `Changed settings of route '${name}'`,
+    { type: "route", id: id.data, name },
+    settings
+  )
   refresh(id.data)
   return { ok: true, message: "Route settings saved" }
 }
@@ -148,7 +164,7 @@ export async function setRouteEnabled(
   routeId: string,
   enabled: boolean
 ): Promise<ActionResult> {
-  await requireAdmin()
+  const me = await requireAdmin()
   const parsed = z
     .object({ id: idSchema, enabled: z.boolean() })
     .safeParse({ id: routeId, enabled })
@@ -163,8 +179,14 @@ export async function setRouteEnabled(
   if (error) return actionError(error)
   if (!data) return { ok: false, error: "Route not found" }
 
-  refresh(parsed.data.id)
   const name = (data as { name: string }).name
+  await audit(
+    me.email,
+    parsed.data.enabled ? "route.enable" : "route.disable",
+    `${parsed.data.enabled ? "Enabled" : "Disabled"} route '${name}'`,
+    { type: "route", id: parsed.data.id, name }
+  )
+  refresh(parsed.data.id)
   return {
     ok: true,
     message: parsed.data.enabled
@@ -196,7 +218,7 @@ export async function setRouteTargets(
   routeId: string,
   modelIds: string[]
 ): Promise<ActionResult> {
-  await requireAdmin()
+  const me = await requireAdmin()
   const parsed = targetsSchema.safeParse({ routeId, modelIds })
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) }
   const { routeId: id, modelIds: ids } = parsed.data
@@ -207,12 +229,13 @@ export async function setRouteTargets(
   const db = supabaseAdmin()
   const { data: route, error: routeError } = await db
     .from("routes")
-    .select("id, kind")
+    .select("id, kind, name")
     .eq("id", id)
     .maybeSingle()
   if (routeError) return actionError(routeError)
   if (!route) return { ok: false, error: "Route not found" }
   const routeKind = (route as { kind: string }).kind
+  const slugs = new Map<string, string>()
 
   if (ids.length) {
     const { data: models, error } = await db
@@ -247,6 +270,7 @@ export async function setRouteTargets(
         error: `${wrongKind.slug} is ${wrongKind.kind === "embedding" ? "an embedding" : "a chat"} model; this route only takes ${routeKind} models`,
       }
     }
+    for (const model of found) slugs.set(model.id, model.slug)
   }
 
   const { error: replaceError } = await db.rpc("replace_route_targets", {
@@ -255,6 +279,14 @@ export async function setRouteTargets(
   })
   if (replaceError) return actionError(replaceError)
 
+  const routeName = (route as { name: string }).name
+  await audit(
+    me.email,
+    "route.targets",
+    `Changed targets of route '${routeName}'`,
+    { type: "route", id, name: routeName },
+    { count: ids.length, targets: ids.map((m) => slugs.get(m) ?? m) }
+  )
   refresh(id)
   return {
     ok: true,
@@ -269,7 +301,7 @@ export async function setRouteTargets(
 // ---------------------------------------------------------------------------
 
 export async function deleteRoute(routeId: string): Promise<ActionResult> {
-  await requireAdmin()
+  const me = await requireAdmin()
   const id = idSchema.safeParse(routeId)
   if (!id.success) return { ok: false, error: "Route not found" }
 
@@ -283,9 +315,15 @@ export async function deleteRoute(routeId: string): Promise<ActionResult> {
   if (error) return actionError(error)
   if (!data) return { ok: false, error: "Route not found" }
 
+  const name = (data as { name: string }).name
+  await audit(me.email, "route.delete", `Deleted route '${name}'`, {
+    type: "route",
+    id: id.data,
+    name,
+  })
   refresh()
   return {
     ok: true,
-    message: `Route "${(data as { name: string }).name}" deleted`,
+    message: `Route "${name}" deleted`,
   }
 }

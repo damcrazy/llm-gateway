@@ -2,7 +2,7 @@
 
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { RefreshCwIcon, XIcon } from "lucide-react"
+import { RefreshCwIcon, TagIcon, XIcon } from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import {
@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
 
 import {
@@ -44,6 +45,7 @@ export function LogFiltersBar({
     filters.status === DEFAULT_FILTERS.status &&
     !filters.app &&
     !filters.model &&
+    !filters.tag &&
     filters.range === DEFAULT_FILTERS.range
 
   function update(patch: Partial<LogFilters>) {
@@ -143,6 +145,22 @@ export function LogFiltersBar({
           )}
         </SelectContent>
       </Select>
+
+      {filters.tag && (
+        <Badge variant="secondary" className="h-8 gap-1 pr-1 font-normal">
+          <TagIcon />
+          {filters.tag}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-6"
+            aria-label={`Remove tag filter ${filters.tag}`}
+            onClick={() => update({ tag: "" })}
+          >
+            <XIcon />
+          </Button>
+        </Badge>
+      )}
 
       <div className="flex items-center gap-1">
         {!isDefault && (

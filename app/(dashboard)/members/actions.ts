@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { requireSuperadmin, verifiedTotpFactors } from "@/lib/auth"
 import {
   ensureUser,
@@ -92,6 +93,13 @@ export async function addMember(
     return actionError(accountError)
   }
 
+  await audit(
+    me.email,
+    "member.add",
+    `Added member ${parsedEmail.data} as ${parsedAccess.data.role}`,
+    { type: "member", id: parsedEmail.data, name: parsedEmail.data },
+    { ...parsedAccess.data, signIn: password ? "password" : "google" }
+  )
   refresh()
   return {
     ok: true,
@@ -105,7 +113,7 @@ export async function updateMember(
   email: string,
   access: MemberAccessInput
 ): Promise<ActionResult> {
-  await requireSuperadmin()
+  const me = await requireSuperadmin()
   const target = email.toLowerCase()
   if (target === env.superadminEmail()) {
     return { ok: false, error: "The superadmin always has full access" }
@@ -123,6 +131,13 @@ export async function updateMember(
   if (error) return actionError(error)
   if (!data) return { ok: false, error: "That person no longer has access" }
 
+  await audit(
+    me.email,
+    "member.update",
+    `Changed access of member ${target}`,
+    { type: "member", id: target, name: target },
+    parsedAccess.data
+  )
   refresh()
   return { ok: true, message: `Access updated for ${target}` }
 }
@@ -131,7 +146,7 @@ export async function resetMemberPassword(
   email: string,
   password: string
 ): Promise<ActionResult> {
-  await requireSuperadmin()
+  const me = await requireSuperadmin()
   const target = email.toLowerCase()
   const problem = passwordProblem(password)
   if (problem) return { ok: false, error: problem }
@@ -148,11 +163,17 @@ export async function resetMemberPassword(
   } catch (error) {
     return actionError(error)
   }
+  await audit(
+    me.email,
+    "member.reset_password",
+    `Reset password of member ${target}`,
+    { type: "member", id: target, name: target }
+  )
   return { ok: true, message: `Password reset for ${target}` }
 }
 
 export async function removeMember(email: string): Promise<ActionResult> {
-  await requireSuperadmin()
+  const me = await requireSuperadmin()
   const target = email.toLowerCase()
   if (target === env.superadminEmail()) {
     return { ok: false, error: "The superadmin cannot be removed" }
@@ -160,13 +181,24 @@ export async function removeMember(email: string): Promise<ActionResult> {
 
   const db = supabaseAdmin()
   // Their apps and API keys are deleted with them (foreign key cascade).
-  const { error } = await db.from("members").delete().eq("email", target)
+  const { data, error } = await db
+    .from("members")
+    .delete()
+    .eq("email", target)
+    .select("email")
   if (error) return actionError(error)
 
   // Delete their account too, so any live session stops refreshing.
   const user = await findAuthUserByEmail(target).catch(() => null)
   if (user) await db.auth.admin.deleteUser(user.id)
 
+  if (data?.length || user) {
+    await audit(me.email, "member.remove", `Removed member ${target}`, {
+      type: "member",
+      id: target,
+      name: target,
+    })
+  }
   refresh()
   return {
     ok: true,
@@ -191,6 +223,7 @@ export async function resetMemberTwoFactor(
   }
   const user = await findAuthUserByEmail(target).catch(() => null)
   if (!user) return { ok: false, error: "That person hasn't signed in yet" }
+  let removed = 0
   try {
     const factors = await verifiedTotpFactors(user.id)
     for (const factor of factors) {
@@ -199,9 +232,19 @@ export async function resetMemberTwoFactor(
         userId: user.id,
       })
       if (error) throw new Error(error.message)
+      removed++
     }
   } catch (error) {
     return actionError(error)
+  }
+  if (removed > 0) {
+    await audit(
+      me.email,
+      "member.reset_2fa",
+      `Reset two-factor authentication of member ${target}`,
+      { type: "member", id: target, name: target },
+      { authenticatorsRemoved: removed }
+    )
   }
   revalidatePath("/members")
   return {
@@ -218,7 +261,7 @@ export async function resetMemberTwoFactor(
 export async function createMemberAccount(
   email: string
 ): Promise<ActionResult> {
-  await requireSuperadmin()
+  const me = await requireSuperadmin()
   const target = email.toLowerCase()
   const { data: member } = await supabaseAdmin()
     .from("members")
@@ -231,6 +274,12 @@ export async function createMemberAccount(
   } catch (error) {
     return actionError(error)
   }
+  await audit(
+    me.email,
+    "member.create_account",
+    `Created a sign-in account for member ${target}`,
+    { type: "member", id: target, name: target }
+  )
   revalidatePath("/members")
   return {
     ok: true,

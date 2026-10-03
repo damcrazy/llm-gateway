@@ -53,6 +53,11 @@ import { Spinner } from "@/components/ui/spinner"
 
 import { EXPIRY_OPTIONS, type ExpiryValue } from "../_lib"
 import {
+  KeyLimitFields,
+  parseLimitValues,
+  type KeyLimitValues,
+} from "./key-limits"
+import {
   createApiKey,
   deleteApp,
   revokeApiKey,
@@ -97,10 +102,13 @@ export function AppEnabledSwitch({
   )
 }
 
+const NO_LIMITS: KeyLimitValues = { rpm: "", tpm: "", budget: "" }
+
 export function CreateKeyDialog({ appId }: { appId: string }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [expiry, setExpiry] = useState<ExpiryValue>("never")
+  const [limits, setLimits] = useState<KeyLimitValues>(NO_LIMITS)
   const [createdKey, setCreatedKey] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -111,13 +119,18 @@ export function CreateKeyDialog({ appId }: { appId: string }) {
       setCreatedKey(null)
       setName("")
       setExpiry("never")
+      setLimits(NO_LIMITS)
     }
   }
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
     startTransition(async () => {
-      const result = await createApiKey(appId, { name, expiry })
+      const result = await createApiKey(appId, {
+        name,
+        expiry,
+        limits: parseLimitValues(limits),
+      })
       if (!result.ok || !result.data) {
         toast.error(result.ok ? "The key was not returned" : result.error)
         return
@@ -222,6 +235,11 @@ export function CreateKeyDialog({ appId }: { appId: string }) {
                   </SelectContent>
                 </Select>
               </Field>
+              <KeyLimitFields
+                idPrefix="key-limits"
+                values={limits}
+                onChange={setLimits}
+              />
             </FieldGroup>
             <DialogFooter>
               <Button type="submit" disabled={pending || !name.trim()}>

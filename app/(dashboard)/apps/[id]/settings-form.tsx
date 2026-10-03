@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
-import type { AppRow } from "@/lib/db/types"
+import type { AppRow, PiiMode } from "@/lib/db/types"
 
 import { updateAppSettings } from "../actions"
 
@@ -49,9 +49,17 @@ type SettingsApp = Pick<
   | "description"
   | "monthly_budget_usd"
   | "rpm_limit"
+  | "tpm_limit"
+  | "pii_mode"
   | "log_payloads"
   | "cache_ttl_seconds"
 >
+
+const PII_OPTIONS: { value: PiiMode; label: string }[] = [
+  { value: "off", label: "Off" },
+  { value: "redact", label: "Redact" },
+  { value: "block", label: "Block" },
+]
 
 const CACHE_OFF = "off"
 const CACHE_OPTIONS = [
@@ -76,6 +84,10 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
   const [rpm, setRpm] = useState(
     app.rpm_limit == null ? "" : String(app.rpm_limit)
   )
+  const [tpm, setTpm] = useState(
+    app.tpm_limit == null ? "" : String(app.tpm_limit)
+  )
+  const [piiMode, setPiiMode] = useState<PiiMode>(app.pii_mode)
   const [logPayloads, setLogPayloads] = useState(app.log_payloads)
   const [cacheTtl, setCacheTtl] = useState(
     app.cache_ttl_seconds == null ? CACHE_OFF : String(app.cache_ttl_seconds)
@@ -90,6 +102,8 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
         description,
         monthlyBudgetUsd: parseOptionalNumber(budget),
         rpmLimit: parseOptionalNumber(rpm),
+        tpmLimit: parseOptionalNumber(tpm),
+        piiMode,
         logPayloads,
         cacheTtlSeconds: cacheTtl === CACHE_OFF ? null : Number(cacheTtl),
       })
@@ -139,7 +153,7 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
 
             <FieldSeparator />
 
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-6 md:grid-cols-3">
               <Field>
                 <FieldLabel htmlFor="settings-budget">
                   Monthly budget
@@ -188,6 +202,28 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
                   Shared by all of this app&apos;s keys.
                 </FieldDescription>
               </Field>
+              <Field>
+                <FieldLabel htmlFor="settings-tpm">Token limit</FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    id="settings-tpm"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    step={1}
+                    placeholder="No limit"
+                    value={tpm}
+                    onChange={(event) => setTpm(event.target.value)}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupText>tokens / min</InputGroupText>
+                  </InputGroupAddon>
+                </InputGroup>
+                <FieldDescription>
+                  Input plus output. Once reached, requests wait for the next
+                  minute.
+                </FieldDescription>
+              </Field>
             </div>
 
             <FieldSeparator />
@@ -212,6 +248,40 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
                 </SelectTrigger>
                 <SelectContent position="popper">
                   {CACHE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldLabel htmlFor="settings-pii">
+                  Personal data in prompts
+                </FieldLabel>
+                <FieldDescription>
+                  Finds email addresses, phone numbers, card and bank numbers,
+                  US social security numbers and API keys or secrets.{" "}
+                  <strong className="font-medium text-foreground">
+                    Redact
+                  </strong>{" "}
+                  replaces them with placeholders like [EMAIL] before any
+                  provider sees them, and in logs and traces;{" "}
+                  <strong className="font-medium text-foreground">Block</strong>{" "}
+                  refuses the request.
+                </FieldDescription>
+              </FieldContent>
+              <Select
+                value={piiMode}
+                onValueChange={(value) => setPiiMode(value as PiiMode)}
+              >
+                <SelectTrigger id="settings-pii" className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {PII_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>

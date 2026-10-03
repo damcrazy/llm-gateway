@@ -186,6 +186,29 @@ Response headers `x-gateway-model`, `x-gateway-provider`, `x-gateway-attempts` a
 - Supported: text, images and files (as data or URLs), function tools, `text.format` (JSON schema), `reasoning.effort` and streaming.
 - Built-in tools (web search, file search, code interpreter) aren't supported.
 
+### Limits, privacy and tags
+
+**Limits** (app **Settings**, and **Limits** on each API key):
+- Requests per minute, tokens per minute (input plus output) and a monthly budget, per app.
+- Each key can have its own lower limits, e.g. for a teammate or a script.
+- Token use is only known after a response, so the request that goes over the token limit still finishes; later ones get a 429 until the minute ends.
+- Budget alerts also cover keys with a budget.
+
+**Personal data in prompts** (app **Settings**) finds email addresses, phone numbers, card numbers (Luhn-checked), IBANs, US social security numbers, and API keys or secrets (OpenAI, Anthropic, AWS, GitHub, Slack, Google, Stripe, JWTs, private keys).
+- **Redact:** replaces them with placeholders like `[EMAIL]` before any provider sees them, and in stored payloads and exported traces.
+- **Block:** refuses the request with a 400.
+- Logs show which kinds were found.
+
+**Tags and end users**, for filtering logs and traces:
+- Send `x-gateway-tags: checkout,beta` (up to 10 tags).
+- Name the end user with `x-gateway-user`, or OpenAI's `user` / `safety_identifier`, or Anthropic's `metadata.user_id`.
+- A `metadata` object (up to 16 values) is stored too.
+- The request body still reaches the provider unchanged.
+
+**Audit log** (the **Audit log** page): who changed what in the dashboard, plus sign-ins, password and two-factor changes.
+- Admins see everything; members see their own entries.
+- Kept for a year. Secrets are never recorded.
+
 ### Alerts and tracing
 
 **Alerts** (bell at the top of the dashboard, and the **Alerts** page) are per person. Each one is raised once per period and kept for 90 days.

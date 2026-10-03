@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { requireMember } from "@/lib/auth"
 import { encryptSecret } from "@/lib/crypto"
 import {
@@ -104,6 +105,30 @@ export async function saveTraceExports(
   } catch (error) {
     return actionError(error)
   }
+  await audit(
+    me.email,
+    "tracing.settings",
+    "Changed trace export settings",
+    { type: "tracing", name: me.email },
+    {
+      langfuse: {
+        enabled: langfuse.enabled,
+        host: langfuse.host || null,
+        publicKey: langfuse.publicKey || null,
+        secretKeyReplaced: Boolean(langfuse.secretKey),
+      },
+      otel: {
+        enabled: otel.enabled,
+        endpoint: otel.endpoint || null,
+        headers:
+          otel.headers === undefined
+            ? "unchanged"
+            : otel.headers.trim()
+              ? "replaced"
+              : "removed",
+      },
+    }
+  )
   forgetExportSettings(me.email)
   revalidatePath("/tracing")
   return { ok: true, message: "Export settings saved" }
@@ -142,6 +167,9 @@ export async function sendTestTrace(): Promise<ActionResult> {
     costUsd: 0,
     timings: { total: 420, prepare: 3, overhead: 9, provider: 411 },
     parameters: {},
+    tags: ["test"],
+    endUser: null,
+    metadata: null,
     input: [{ role: "user", content: "Test trace from your LLM gateway" }],
     output: { role: "assistant", content: "It works." },
   }

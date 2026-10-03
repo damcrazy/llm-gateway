@@ -10,6 +10,7 @@ import {
   CpuIcon,
   GaugeIcon,
   FlaskConicalIcon,
+  HistoryIcon,
   LayoutDashboardIcon,
   LogOutIcon,
   RouteIcon,
@@ -74,6 +75,12 @@ const NAV: {
         access: "member",
       },
       { title: "Alerts", href: "/alerts", icon: BellIcon, access: "member" },
+      {
+        title: "Audit log",
+        href: "/audit",
+        icon: HistoryIcon,
+        access: "member",
+      },
       {
         title: "Playground",
         href: "/playground",

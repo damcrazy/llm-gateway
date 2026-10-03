@@ -3,6 +3,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
 import { actionError, type ActionResult } from "@/lib/actions"
+import { audit } from "@/lib/audit"
 import { getSessionState, verifiedTotpFactors } from "@/lib/auth"
 import { env } from "@/lib/env"
 import { supabaseAdmin } from "@/lib/supabase/admin"
@@ -102,6 +103,7 @@ export async function verifyRecoveryEmail(code: string): Promise<ActionResult> {
   }
   await client.auth.signOut({ scope: "local" })
 
+  let removed = 0
   try {
     const factors = await verifiedTotpFactors(member.id)
     for (const factor of factors) {
@@ -111,9 +113,17 @@ export async function verifyRecoveryEmail(code: string): Promise<ActionResult> {
           userId: member.id,
         })
       if (deleteError) throw new Error(deleteError.message)
+      removed++
     }
   } catch (deleteError) {
     return actionError(deleteError)
   }
+  await audit(
+    member.email,
+    "account.mfa_recovery",
+    "Removed authenticators after verifying a code sent by email",
+    { type: "account", id: member.id, name: member.email },
+    { authenticatorsRemoved: removed }
+  )
   return { ok: true, message: "Verified. Set up your new authenticator." }
 }

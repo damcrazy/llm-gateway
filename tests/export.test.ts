@@ -34,6 +34,9 @@ const record: TraceRecord = {
   costUsd: 0.0012,
   timings: { total: 1500, prepare: 2, overhead: 8, provider: 1490 },
   parameters: { temperature: 0.3, max_tokens: 200 },
+  tags: ["checkout", "beta"],
+  endUser: "user-42",
+  metadata: { feature: "summarize" },
 }
 
 describe("langfuseBatch", () => {
@@ -47,6 +50,11 @@ describe("langfuseBatch", () => {
     const generation = batch[1]!.body as Record<string, unknown>
     expect(trace.id).toBe(record.id)
     expect(trace.name).toBe("Support bot · smart")
+    expect(trace.tags).toEqual(["Support bot", "chat", "checkout", "beta"])
+    expect(trace.userId).toBe("user-42")
+    expect((trace.metadata as Record<string, unknown>).feature).toBe(
+      "summarize"
+    )
     expect(generation.traceId).toBe(record.id)
     expect(generation.model).toBe("models/gemini-2.5-flash")
     expect(generation.startTime).toBe(new Date(record.start).toISOString())
@@ -112,6 +120,9 @@ describe("otelPayload", () => {
     expect(attributes["gen_ai.request.temperature"]).toBe(0.3)
     expect(attributes["gateway.cost_usd"]).toBe(0.0012)
     expect(attributes["gateway.stream"]).toBe(true)
+    expect(attributes["gateway.tags"]).toBe("checkout,beta")
+    expect(attributes["user.id"]).toBe("user-42")
+    expect(attributes["gateway.metadata.feature"]).toBe("summarize")
     expect("gen_ai.input.messages" in attributes).toBe(false)
     expect("error.type" in attributes).toBe(false)
   })

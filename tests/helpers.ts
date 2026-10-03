@@ -112,6 +112,8 @@ export function app(overrides: Partial<GatewayApp> = {}): GatewayApp {
     buckets: [],
     monthly_budget_usd: null,
     rpm_limit: null,
+    tpm_limit: null,
+    pii_mode: "off",
     log_payloads: false,
     owner_email: "owner@example.com",
     created_by: null,

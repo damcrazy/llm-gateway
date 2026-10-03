@@ -39,6 +39,9 @@ export interface TraceRecord {
   costUsd: number
   timings: RequestTimings
   parameters: Record<string, unknown>
+  tags: string[]
+  endUser: string | null
+  metadata: Record<string, string> | null
   input?: unknown
   output?: unknown
 }
@@ -161,13 +164,18 @@ export function traceRecord(
     costUsd: recorder.costUsd,
     timings: recorder.timings,
     parameters,
+    tags: recorder.tags,
+    endUser: recorder.endUser,
+    metadata: recorder.metadata,
   }
   if (recorder.logPayloads) {
     const input = body.messages ?? body.input ?? recorder.requestBody
     record.input = redact(
-      body.system ? { system: body.system, messages: input } : input
+      recorder.payload(
+        body.system ? { system: body.system, messages: input } : input
+      )
     )
-    record.output = redact(outputOf(recorder.responseBody))
+    record.output = redact(recorder.payload(outputOf(recorder.responseBody)))
   }
   return record
 }
@@ -190,6 +198,7 @@ export function langfuseBatch(record: TraceRecord) {
     stream: record.stream,
     http_status: record.httpStatus,
     gateway_timings_ms: record.timings,
+    ...(record.metadata ?? {}),
   }
   return {
     batch: [
@@ -201,7 +210,8 @@ export function langfuseBatch(record: TraceRecord) {
           id: record.id,
           timestamp: iso(record.start),
           name: `${record.appName} · ${record.requestedModel ?? record.endpoint}`,
-          tags: [record.appName, record.endpoint],
+          tags: [...new Set([record.appName, record.endpoint, ...record.tags])],
+          ...(record.endUser ? { userId: record.endUser } : {}),
           metadata,
           ...(record.input !== undefined ? { input: record.input } : {}),
           ...(record.output !== undefined ? { output: record.output } : {}),
@@ -358,6 +368,11 @@ export function otelPayload(record: TraceRecord) {
       attribute(`gen_ai.request.${key}`, value)
     ),
     attribute("gateway.app.name", record.appName),
+    attribute("gateway.tags", record.tags.join(",")),
+    attribute("user.id", record.endUser),
+    ...Object.entries(record.metadata ?? {}).map(([key, value]) =>
+      attribute(`gateway.metadata.${key}`, value)
+    ),
     attribute("gateway.app.id", record.appId),
     attribute("gateway.endpoint", record.endpoint),
     attribute("gateway.model", record.servedModel),
