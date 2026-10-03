@@ -2,6 +2,7 @@ import "server-only"
 
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
+import { noteModelFailure } from "./alerts"
 import { background } from "./background"
 import type { GatewaySnapshot, HealthState, ModelRuntime } from "./config"
 import type { UpstreamError } from "./errors"
@@ -91,14 +92,16 @@ export function recordFailure(
 ): void {
   if (cooldownSeconds <= 0) return
   const previous = effective(snapshot, model.id)
+  const failures = (previous?.failures ?? 0) + 1
   local.set(model.id, {
     cooldownUntil: Math.max(
       previous?.cooldownUntil ?? 0,
       Date.now() + cooldownSeconds * 1000
     ),
-    failures: (previous?.failures ?? 0) + 1,
+    failures,
     updatedAt: Date.now(),
   })
+  noteModelFailure(model, failures, cooldownSeconds, error.message)
   background(async () => {
     const { error: dbError } = await supabaseAdmin().rpc(
       "record_model_failure",

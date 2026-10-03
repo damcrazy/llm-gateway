@@ -11,6 +11,7 @@ your apps (LangChain, LangGraph, opencode, Claude Code, OpenAI/Anthropic SDKs, c
         ▼
 Next.js (one app: dashboard + API)                           Supabase
   /v1/chat/completions   OpenAI format        ─┐              admins · apps · api_keys (hashed)
+  /v1/responses          OpenAI Responses      │
   /v1/messages           Anthropic format      ├─ router ──►  providers · provider_secrets (AES-GCM)
   /v1/embeddings         OpenAI format         │  failover    models · routes · model_health
   /v1/models             OpenAI / Anthropic   ─┘  logging     request_logs · usage_hourly
@@ -179,6 +180,24 @@ export ANTHROPIC_AUTH_TOKEN=gw_live_…
 ```
 
 Response headers `x-gateway-model`, `x-gateway-provider`, `x-gateway-attempts` and `x-gateway-request-id` show which model served each request.
+
+**OpenAI Responses API** (`POST /v1/responses`, e.g. `client.responses.create`) works with any model, including Anthropic and Gemini ones.
+- It is stateless. Nothing is stored, so `previous_response_id` returns a 400; send the whole conversation in `input`, as with `store: false`.
+- Supported: text, images and files (as data or URLs), function tools, `text.format` (JSON schema), `reasoning.effort` and streaming.
+- Built-in tools (web search, file search, code interpreter) aren't supported.
+
+### Alerts and tracing
+
+**Alerts** (bell at the top of the dashboard, and the **Alerts** page) are per person. Each one is raised once per period and kept for 90 days.
+- **Budgets:** an app with a monthly budget (or a member's own account budget) passes 50–90%, and again when it's used up.
+- **Failing models:** 3 failures in a row, or taken out of rotation (bad key, removed model). Private providers alert their owner; shared ones alert the admins.
+- **Slow responses:** an app's median response time over 15 minutes (time to first token when streaming) goes above 2–30 s.
+- Add a **webhook** to also get them in Slack, Discord or anything that accepts JSON. It must be https on a public address and is stored encrypted.
+
+**Tracing** (the **Tracing** page) sends every request from your apps to Langfuse (cloud or self-hosted) and/or an OpenTelemetry collector (OTLP/HTTP JSON, GenAI semantic conventions).
+- Includes the app, requested and served model, tokens, cost, gateway timings and errors.
+- Prompts and answers are included only for apps that log payloads.
+- Sent after the response, so it adds no latency. Keys and headers are stored encrypted.
 
 ## People and roles
 

@@ -95,7 +95,9 @@ export function QuickStart({
                   <code className="font-mono">data: {"{…}"}</code> lines),
                   ending with <code className="font-mono">data: [DONE]</code>.{" "}
                   <code className="font-mono">/v1/messages</code> streams
-                  Anthropic events instead.
+                  Anthropic events and{" "}
+                  <code className="font-mono">/v1/responses</code> streams
+                  OpenAI Responses events instead.
                 </li>
                 <li>
                   Failover happens before the first token: if a model fails, is

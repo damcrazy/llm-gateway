@@ -16,7 +16,15 @@ import {
   finishJson,
   observeChat,
 } from "./execute"
+import { checkAfterRequest } from "./alerts"
+import { exportTrace } from "./export"
 import { RequestRecorder } from "./recorder"
+import {
+  chatToResponses,
+  chunksToResponsesEvents,
+  responsesToChat,
+  type ResponsesRequest,
+} from "./translate/responses"
 import { listAvailableModels } from "./router"
 import { SSE_HEADERS, encodeSse } from "./sse"
 import {
@@ -183,7 +191,13 @@ async function begin(request: Request, recorder: RequestRecorder) {
     ownerEmail: auth.owner.email,
     logPayloads: auth.app.log_payloads,
   })
-  after(() => recorder.persist())
+  after(async () => {
+    await recorder.persist()
+    await Promise.all([
+      checkAfterRequest(recorder, auth),
+      exportTrace(recorder, auth),
+    ])
+  })
   await recorder.timed("limits", () => enforceLimits(auth))
   return auth
 }
@@ -262,6 +276,70 @@ export async function handleChatCompletions(
 // ---------------------------------------------------------------------------
 // POST /v1/messages (Anthropic)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// POST /v1/responses (OpenAI Responses API, stateless)
+// ---------------------------------------------------------------------------
+
+export async function handleResponses(request: Request): Promise<Response> {
+  const recorder = new RequestRecorder("responses", request)
+  try {
+    const auth = await begin(request, recorder)
+    const body = await readJson<ResponsesRequest>(request)
+    if (
+      !body ||
+      (typeof body.input !== "string" && !Array.isArray(body.input))
+    ) {
+      throw new GatewayError(
+        400,
+        "`input` must be a string or an array of input items.",
+        "invalid_request"
+      )
+    }
+    if (recorder.logPayloads) recorder.requestBody = body
+
+    const chatRequest = responsesToChat(body)
+    const execution = await executeChat({
+      request: chatRequest,
+      app: auth.app,
+      policy: auth.owner.policy,
+      cache: cacheFor(auth.app, request),
+      signal: request.signal,
+      recorder,
+    })
+    const headers = gatewayHeaders(recorder, execution.model)
+
+    if (execution.type === "json") {
+      finishJson(recorder, execution.completion, chatRequest)
+      return Response.json(
+        chatToResponses(execution.completion, body, recorder.usage),
+        { headers }
+      )
+    }
+
+    const events = chunksToResponsesEvents(
+      observeChat(execution.chunks, recorder, chatRequest),
+      body,
+      () => recorder.usage
+    )
+    return new Response(
+      sseStream(events, (event) => encodeSse(event, event.type), {
+        onError: (error) =>
+          encodeSse(
+            {
+              type: "error",
+              code: "stream_error",
+              message: streamErrorMessage(error),
+            },
+            "error"
+          ),
+      }),
+      { headers: { ...SSE_HEADERS, ...headers } }
+    )
+  } catch (error) {
+    return errorResponse(error, recorder, "openai")
+  }
+}
 
 export async function handleMessages(request: Request): Promise<Response> {
   const recorder = new RequestRecorder("messages", request)

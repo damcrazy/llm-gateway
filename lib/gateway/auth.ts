@@ -178,13 +178,16 @@ function monthStartUtc(): string {
 }
 
 /** This month's spend for an app or a member (cached for a minute). */
-async function monthlySpend(
-  scope: { app: string } | { member: string }
+/** This month's spend; `fresh` skips (and refreshes) the minute-long cache. */
+export async function monthlySpend(
+  scope: { app: string } | { member: string },
+  { fresh = false } = {}
 ): Promise<number> {
   const cacheKey =
     "app" in scope ? `app:${scope.app}` : `member:${scope.member}`
   const cached = spendCache.get(cacheKey)
-  if (cached && Date.now() - cached.at < SPEND_CACHE_TTL_MS) return cached.spend
+  if (!fresh && cached && Date.now() - cached.at < SPEND_CACHE_TTL_MS)
+    return cached.spend
   const { data, error } =
     "app" in scope
       ? await supabaseAdmin().rpc("app_spend_since", {

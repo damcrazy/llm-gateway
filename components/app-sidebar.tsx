@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
+  ActivityIcon,
+  BellIcon,
   BoxesIcon,
   ChevronsUpDownIcon,
   CpuIcon,
@@ -71,6 +73,7 @@ const NAV: {
         icon: GaugeIcon,
         access: "member",
       },
+      { title: "Alerts", href: "/alerts", icon: BellIcon, access: "member" },
       {
         title: "Playground",
         href: "/playground",
@@ -96,6 +99,12 @@ const NAV: {
         access: "member",
       },
       { title: "Routes", href: "/routes", icon: RouteIcon, access: "admin" },
+      {
+        title: "Tracing",
+        href: "/tracing",
+        icon: ActivityIcon,
+        access: "member",
+      },
     ],
   },
   {

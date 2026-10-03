@@ -5,6 +5,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/animate-ui/components/radix/sidebar"
+import { AlertsBell } from "@/components/alerts-bell"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Separator } from "@/components/ui/separator"
@@ -28,7 +29,8 @@ export default async function DashboardLayout({
             orientation="vertical"
             className="mr-2 data-[orientation=vertical]:h-4"
           />
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <AlertsBell />
             <ThemeToggle />
           </div>
         </header>

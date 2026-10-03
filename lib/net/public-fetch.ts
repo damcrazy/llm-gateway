@@ -53,29 +53,39 @@ const agent = new Agent({
   connect: { lookup: publicOnlyLookup as never },
 })
 
-/** Why a URL can't be used by a member-owned provider, or null if it can. */
-export function publicUrlProblem(raw: string): string | null {
+/**
+ * Why a URL can't be used for an outbound call a person configured (their own
+ * provider, a webhook, a trace collector), or null if it can. `subject` names
+ * the thing in the message, e.g. "Your own providers".
+ */
+export function publicUrlProblem(
+  raw: string,
+  subject = "Your own providers"
+): string | null {
+  const lower = subject.charAt(0).toLowerCase() + subject.slice(1)
   let url: URL
   try {
     url = new URL(raw)
   } catch {
     return "Enter a full URL, like https://api.example.com/v1"
   }
-  if (url.protocol !== "https:")
-    return "Your own providers must use an https:// URL"
+  if (url.protocol !== "https:") return `${subject} must use an https:// URL`
   if (url.username || url.password)
     return "Put credentials in the credentials fields, not in the URL"
   const host = hostOf(url)
   if (isIP(host) && !isPublicAddress(host))
-    return `${host} is a private network address, which your own providers can't use`
+    return `${host} is a private network address, which ${lower} can't use`
   if (host === "localhost" || host.endsWith(".localhost"))
-    return "localhost isn't reachable for your own providers"
+    return `localhost isn't reachable for ${lower}`
   return null
 }
 
-/** Resolves the host now, for a friendly error when a provider is saved. */
-export async function checkPublicUrl(raw: string): Promise<string | null> {
-  const problem = publicUrlProblem(raw)
+/** Resolves the host now, for a friendly error when the URL is saved. */
+export async function checkPublicUrl(
+  raw: string,
+  subject?: string
+): Promise<string | null> {
+  const problem = publicUrlProblem(raw, subject)
   if (problem) return problem
   const host = hostOf(new URL(raw))
   if (isIP(host)) return null

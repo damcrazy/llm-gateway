@@ -13,7 +13,7 @@ import { costUsd } from "./usage"
 const MAX_PAYLOAD_STRING = 20_000
 
 /** Shrinks huge strings (base64 images, long documents) before storing payloads. */
-function redact(value: unknown, depth = 0): unknown {
+export function redact(value: unknown, depth = 0): unknown {
   if (depth > 12) return "[truncated]"
   if (typeof value === "string") {
     if (value.startsWith("data:") && value.length > 200)

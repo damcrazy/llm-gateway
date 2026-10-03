@@ -293,6 +293,12 @@ export const ENDPOINTS = [
   },
   {
     method: "POST",
+    path: "/v1/responses",
+    format: "OpenAI Responses (stateless: send the whole conversation)",
+    streaming: 'Response events with "stream": true',
+  },
+  {
+    method: "POST",
     path: "/v1/messages",
     format: "Anthropic Messages",
     streaming: 'Anthropic events with "stream": true',
