@@ -170,7 +170,8 @@ export async function runPlayground(
           "permission_error"
         )
       }
-      await enforceLimits(context)
+      const appContext = context
+      await recorder.timed("limits", () => enforceLimits(appContext))
     }
     const execution = await executeChat({
       request,

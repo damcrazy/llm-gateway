@@ -30,10 +30,43 @@ function redact(value: unknown, depth = 0): unknown {
   return value
 }
 
+/** Where a request's time went, in milliseconds. */
+export interface RequestTimings {
+  total: number
+  /** API key lookup. */
+  auth?: number
+  /** Rate limit and budget checks. */
+  limits?: number
+  /** Reading the body, routing and translating, before the first provider call. */
+  prepare: number
+  /** Deliberate pauses before retrying a model. */
+  retry_wait?: number
+  /** Provider time spent on attempts that failed (and were failed over). */
+  failed?: number
+  /** The answering provider, until its first byte or token. */
+  provider_first?: number
+  /** The answering provider, until it finished. */
+  provider?: number
+  /** After the provider finished, until the response was complete. */
+  post?: number
+  /** Everything that wasn't a provider: total - provider - failed. */
+  overhead: number
+}
+
+type TimedPhase = "auth" | "limits" | "retry_wait" | "failed"
+
+const ms = (value: number) => Math.round(value * 10) / 10
+
 /** Collects everything about one gateway request and writes it to request_logs. */
 export class RequestRecorder {
   readonly id = randomUUID()
   readonly startedAt = Date.now()
+  // High-resolution clock for the latency breakdown.
+  private readonly t0 = performance.now()
+  private endPerf?: number
+  private spans: Partial<Record<TimedPhase, number>> = {}
+  private firstAttemptAt?: number
+  private servedSpan?: { start: number; first: number; end?: number }
   readonly done: Promise<void>
   private resolveDone!: () => void
   private shouldLog = false
@@ -91,7 +124,76 @@ export class RequestRecorder {
     if (this.finished) return
     this.finished = true
     this.endedAt = Date.now()
+    this.endPerf = performance.now()
+    this.providerDone()
     this.resolveDone()
+  }
+
+  /** Times one of the gateway's own phases (auth, limits). */
+  async timed<T>(phase: "auth" | "limits", work: () => Promise<T>): Promise<T> {
+    const start = performance.now()
+    try {
+      return await work()
+    } finally {
+      this.addSpan(phase, performance.now() - start)
+    }
+  }
+
+  addSpan(phase: TimedPhase, duration: number) {
+    this.spans[phase] = (this.spans[phase] ?? 0) + duration
+  }
+
+  /** Call when a provider attempt starts; pass the result to the outcome. */
+  attemptStarted(): number {
+    const now = performance.now()
+    this.firstAttemptAt ??= now
+    return now
+  }
+
+  attemptFailed(start: number) {
+    this.addSpan("failed", performance.now() - start)
+  }
+
+  /**
+   * The attempt that answers. A streamed one has only produced its first
+   * chunk so far; `providerDone` marks when the provider finished.
+   */
+  attemptSucceeded(start: number, streaming: boolean) {
+    const now = performance.now()
+    this.servedSpan = { start, first: now, end: streaming ? undefined : now }
+  }
+
+  providerDone() {
+    if (this.servedSpan && this.servedSpan.end === undefined)
+      this.servedSpan.end = performance.now()
+  }
+
+  get timings(): RequestTimings {
+    const end = this.endPerf ?? performance.now()
+    const total = end - this.t0
+    const auth = this.spans.auth ?? 0
+    const limits = this.spans.limits ?? 0
+    const failed = this.spans.failed ?? 0
+    const served = this.servedSpan
+    const providerEnd = served ? (served.end ?? end) : undefined
+    const provider = served ? providerEnd! - served.start : 0
+    const timings: RequestTimings = {
+      total: ms(total),
+      prepare: ms(
+        Math.max(0, (this.firstAttemptAt ?? end) - this.t0 - auth - limits)
+      ),
+      overhead: ms(Math.max(0, total - provider - failed)),
+    }
+    if (this.spans.auth !== undefined) timings.auth = ms(auth)
+    if (this.spans.limits !== undefined) timings.limits = ms(limits)
+    if (this.spans.retry_wait) timings.retry_wait = ms(this.spans.retry_wait)
+    if (failed) timings.failed = ms(failed)
+    if (served) {
+      timings.provider_first = ms(served.first - served.start)
+      timings.provider = ms(provider)
+      timings.post = ms(Math.max(0, end - providerEnd!))
+    }
+    return timings
   }
 
   get costUsd(): number {
@@ -106,6 +208,7 @@ export class RequestRecorder {
     await this.done
     if (!this.shouldLog) return
     const usage = this.usage
+    const timings = this.timings
     const db = supabaseAdmin()
     const { error } = await db.from("request_logs").insert({
       id: this.id,
@@ -132,6 +235,9 @@ export class RequestRecorder {
       cost_usd: this.costUsd,
       latency_ms: this.latencyMs,
       ttft_ms: this.ttftMs ?? null,
+      timings,
+      provider_ms: Math.round(timings.provider ?? 0),
+      overhead_ms: Math.round(timings.overhead),
       user_agent: this.userAgent,
     })
     if (error) {

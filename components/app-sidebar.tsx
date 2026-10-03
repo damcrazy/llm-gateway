@@ -6,6 +6,7 @@ import {
   BoxesIcon,
   ChevronsUpDownIcon,
   CpuIcon,
+  GaugeIcon,
   FlaskConicalIcon,
   LayoutDashboardIcon,
   LogOutIcon,
@@ -64,6 +65,12 @@ const NAV: {
         access: "member",
       },
       { title: "Logs", href: "/logs", icon: ScrollTextIcon, access: "member" },
+      {
+        title: "Latency",
+        href: "/latency",
+        icon: GaugeIcon,
+        access: "member",
+      },
       {
         title: "Playground",
         href: "/playground",

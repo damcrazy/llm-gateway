@@ -153,7 +153,7 @@ function streamErrorMessage(error: unknown) {
 }
 
 async function begin(request: Request, recorder: RequestRecorder) {
-  const auth = await authenticateRequest(request)
+  const auth = await recorder.timed("auth", () => authenticateRequest(request))
   recorder.enableLogging({
     appId: auth.app.id,
     apiKeyId: auth.keyId,
@@ -161,7 +161,7 @@ async function begin(request: Request, recorder: RequestRecorder) {
     logPayloads: auth.app.log_payloads,
   })
   after(() => recorder.persist())
-  await enforceLimits(auth)
+  await recorder.timed("limits", () => enforceLimits(auth))
   return auth
 }
 

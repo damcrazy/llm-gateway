@@ -70,12 +70,15 @@ async function withFailover<T>(
       // Every candidate failed; give a transiently failing one a second chance.
       retried.add(lastTransient.id)
       model = lastTransient
+      const waitStart = performance.now()
       await sleep(400, clientSignal)
+      recorder.addSpan("retry_wait", performance.now() - waitStart)
     }
     if (!model) break
     if (clientSignal.aborted) throw new ClientAbortError()
 
     const started = Date.now()
+    const attemptStart = recorder.attemptStarted()
     const controller = new AbortController()
     const onClientAbort = () => controller.abort(new ClientAbortError())
     clientSignal.addEventListener("abort", onClientAbort, { once: true })
@@ -106,6 +109,8 @@ async function withFailover<T>(
         },
       })
       if (!held) release()
+      // A held attempt is a stream that has produced its first chunk.
+      recorder.attemptSucceeded(attemptStart, held)
       recordSuccess(model, snapshot)
       recorder.attempts.push({
         model_id: model.id,
@@ -118,6 +123,7 @@ async function withFailover<T>(
       return { value, model }
     } catch (error) {
       release()
+      recorder.attemptFailed(attemptStart)
       if (clientSignal.aborted || error instanceof ClientAbortError)
         throw new ClientAbortError()
 
@@ -215,16 +221,21 @@ function firstTokenDeadline(timeoutMs: number, ctx: AttemptContext) {
 async function* resume(
   first: ChatChunk,
   iterator: AsyncIterator<ChatChunk>,
-  release: () => void
+  release: () => void,
+  onProviderDone: () => void
 ): AsyncGenerator<ChatChunk> {
   try {
     yield first
     while (true) {
       const next = await iterator.next()
-      if (next.done) return
+      if (next.done) {
+        onProviderDone()
+        return
+      }
       yield next.value
     }
   } finally {
+    onProviderDone()
     release()
     await iterator.return?.().catch(() => {})
   }
@@ -299,7 +310,9 @@ export async function executeChat(options: {
         recorder.ttftMs = Date.now() - recorder.startedAt
         return {
           type: "stream",
-          chunks: resume(first.value, iterator, ctx.hold()),
+          chunks: resume(first.value, iterator, ctx.hold(), () =>
+            recorder.providerDone()
+          ),
         }
       } catch (error) {
         void iterator?.return?.().catch(() => {})
