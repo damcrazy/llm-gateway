@@ -490,7 +490,7 @@ function TokensChart({ data, interval, className }: ChartProps) {
 /** All three charts; one client boundary so the series is serialized once. */
 export function UsageCharts({ data, interval }: ChartProps) {
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div data-tour="overview-charts" className="grid gap-4 lg:grid-cols-2">
       <RequestsChart
         data={data}
         interval={interval}

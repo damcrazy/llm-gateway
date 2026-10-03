@@ -180,7 +180,10 @@ export function KpiCards({
         : relativeChange(latency, prevLatency)
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+    <div
+      data-tour="overview-kpis"
+      className="grid grid-cols-2 gap-4 lg:grid-cols-5"
+    >
       <StatTile
         label="Requests"
         icon={ActivityIcon}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import {
   Card,
   CardAction,
@@ -50,12 +51,13 @@ export default async function AlertsPage() {
 
   return (
     <>
+      <PageTour id="alerts" />
       <PageHeader
         title="Alerts"
         description="Find out when budgets run low, models start failing or responses slow down."
       />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
-        <Card>
+        <Card data-tour="alerts-list">
           <CardHeader>
             <CardTitle>Recent alerts</CardTitle>
             <CardDescription>Kept for 90 days.</CardDescription>

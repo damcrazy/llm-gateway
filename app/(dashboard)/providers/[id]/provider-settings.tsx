@@ -157,7 +157,7 @@ export function ProviderSettingsForm({
           setValues((current) => ({ ...current, [key]: value }))
         }
       />
-      <FieldSet className="gap-3">
+      <FieldSet className="gap-3" data-tour="provider-quota">
         <FieldLegend variant="label" className="mb-0">
           Free-tier limits for the whole provider
         </FieldLegend>

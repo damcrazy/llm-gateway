@@ -336,7 +336,7 @@ export function PromptEditor({
         actions={
           <>
             <EditDetailsDialog prompt={prompt} />
-            <Button variant="outline" asChild>
+            <Button data-tour="prompt-compare" variant="outline" asChild>
               <Link
                 href={
                   selected
@@ -359,7 +359,7 @@ export function PromptEditor({
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
         <div className="grid min-w-0 gap-6">
-          <Card className="min-w-0">
+          <Card data-tour="prompt-messages" className="min-w-0">
             <CardHeader>
               <CardTitle>Messages</CardTitle>
               <CardDescription>
@@ -420,7 +420,10 @@ export function PromptEditor({
                 </span>
               </div>
             </CardContent>
-            <CardFooter className="flex-col items-start gap-2 border-t">
+            <CardFooter
+              data-tour="prompt-variables"
+              className="flex-col items-start gap-2 border-t"
+            >
               <div className="flex flex-wrap items-center gap-1.5 text-sm">
                 <span className="mr-1 text-muted-foreground">Variables:</span>
                 {variables.length ? (
@@ -441,7 +444,7 @@ export function PromptEditor({
             </CardFooter>
           </Card>
 
-          <Card className="min-w-0">
+          <Card data-tour="prompt-defaults" className="min-w-0">
             <CardHeader>
               <CardTitle>Defaults</CardTitle>
               <CardDescription>
@@ -525,7 +528,7 @@ export function PromptEditor({
           </Card>
 
           <form onSubmit={save}>
-            <Card className="min-w-0">
+            <Card data-tour="prompt-save" className="min-w-0">
               <CardHeader>
                 <CardTitle>Save as version {nextVersion}</CardTitle>
                 <CardDescription>
@@ -767,7 +770,7 @@ function VersionsCard({
   }
 
   return (
-    <Card className="min-w-0">
+    <Card data-tour="prompt-versions" className="min-w-0">
       <CardHeader>
         <CardTitle>Versions</CardTitle>
         <CardDescription>
@@ -915,7 +918,7 @@ function UsageCard({
   }
 
   return (
-    <Card className="min-w-0">
+    <Card data-tour="prompt-usage" className="min-w-0">
       <CardHeader>
         <CardTitle>Use it</CardTitle>
         <CardDescription>
@@ -1025,7 +1028,7 @@ function EditDetailsDialog({ prompt }: { prompt: PromptInfo }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline">
+        <Button data-tour="prompt-details" variant="outline">
           <PencilIcon />
           Edit details
         </Button>

@@ -3,6 +3,7 @@ import Link from "next/link"
 import { ScrollTextIcon } from "lucide-react"
 
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -90,6 +91,9 @@ export default async function AuditPage({ searchParams }: Props) {
   if (error) throw new Error(error.message)
   const rows = ((data ?? []) as AuditRow[]).slice(0, PAGE_SIZE)
   const hasMore = (data?.length ?? 0) > PAGE_SIZE
+  const firstWithDetails = rows.findIndex(
+    (row) => row.details && Object.keys(row.details).length > 0
+  )
 
   let actors: string[] = []
   if (me.isAdmin) {
@@ -115,6 +119,7 @@ export default async function AuditPage({ searchParams }: Props) {
 
   return (
     <>
+      <PageTour id="audit" />
       <PageHeader
         title="Audit log"
         description={
@@ -129,24 +134,24 @@ export default async function AuditPage({ searchParams }: Props) {
         actors={actors}
         showActor={me.isAdmin}
       />
-      <Card className="py-0">
-        <CardContent className="px-0">
-          {rows.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <ScrollTextIcon />
-                </EmptyMedia>
-                <EmptyTitle>Nothing here yet</EmptyTitle>
-                <EmptyDescription>
-                  Changes to apps, keys, providers, models, routes, people and
-                  settings show up here.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
+      {rows.length === 0 ? (
+        <Empty className="border" data-tour="audit-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ScrollTextIcon />
+            </EmptyMedia>
+            <EmptyTitle>Nothing here yet</EmptyTitle>
+            <EmptyDescription>
+              Changes to apps, keys, providers, models, routes, people and
+              settings show up here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <Card className="py-0">
+          <CardContent className="px-0">
             <Table>
-              <TableHeader>
+              <TableHeader data-tour="audit-columns">
                 <TableRow>
                   <TableHead className="pl-6">When</TableHead>
                   {me.isAdmin && <TableHead>Who</TableHead>}
@@ -156,7 +161,7 @@ export default async function AuditPage({ searchParams }: Props) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((row) => {
+                {rows.map((row, index) => {
                   const href = targetHref(row)
                   return (
                     <TableRow key={row.id}>
@@ -191,7 +196,14 @@ export default async function AuditPage({ searchParams }: Props) {
                           {row.action}
                         </Badge>
                       </TableCell>
-                      <TableCell className="pr-6 text-right">
+                      <TableCell
+                        data-tour={
+                          index === firstWithDetails
+                            ? "audit-details"
+                            : undefined
+                        }
+                        className="pr-6 text-right"
+                      >
                         {row.details && Object.keys(row.details).length > 0 && (
                           <AuditDetails details={row.details} />
                         )}
@@ -201,12 +213,12 @@ export default async function AuditPage({ searchParams }: Props) {
                 })}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
       {hasMore && (
         <div className="flex justify-center">
-          <Button variant="outline" asChild>
+          <Button variant="outline" asChild data-tour="audit-older">
             <Link href={olderHref}>Older entries</Link>
           </Button>
         </div>

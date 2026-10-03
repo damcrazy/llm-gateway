@@ -56,7 +56,7 @@ export function QuickStart({
   const [mode, setMode] = useState<SnippetMode>("full")
 
   return (
-    <Card className="min-w-0">
+    <Card className="min-w-0" data-tour="app-integrate-quickstart">
       <CardHeader>
         <CardTitle>Quick start</CardTitle>
         <CardDescription>
@@ -66,6 +66,7 @@ export function QuickStart({
         </CardDescription>
         <CardAction>
           <ToggleGroup
+            data-tour="app-integrate-mode"
             type="single"
             variant="outline"
             size="sm"
@@ -120,7 +121,7 @@ export function QuickStart({
         )}
         <Tabs defaultValue={snippets[0]!.value} className="min-w-0 gap-4">
           <div className="-mx-1 overflow-x-auto px-1 pb-1">
-            <TabsList>
+            <TabsList data-tour="app-integrate-snippets">
               {snippets.map((tab) => (
                 <TabsTrigger key={tab.value} value={tab.value}>
                   {tab.label}

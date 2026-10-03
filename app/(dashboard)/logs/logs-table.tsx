@@ -95,10 +95,15 @@ export function LogsTable({ logs }: { logs: LogView[] }) {
       })
   }
 
+  // The first row (and the first with tag or PII badges) anchor tour steps.
+  const firstBadged = logs.findIndex(
+    (log) => log.tags?.length || log.pii_found?.length
+  )
+
   return (
     <>
       <Table>
-        <TableHeader>
+        <TableHeader data-tour="logs-columns">
           <TableRow>
             <TableHead className="pl-6">Time</TableHead>
             <TableHead>App</TableHead>
@@ -108,13 +113,16 @@ export function LogsTable({ logs }: { logs: LogView[] }) {
             <TableHead className="text-right">Tokens in / out</TableHead>
             <TableHead className="text-right">Cost</TableHead>
             <TableHead className="text-right">Latency</TableHead>
-            <TableHead className="pr-6 text-right">Attempts</TableHead>
+            <TableHead data-tour="logs-attempts" className="pr-6 text-right">
+              Attempts
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {logs.map((log) => (
+          {logs.map((log, index) => (
             <TableRow
               key={log.id}
+              data-tour={index === 0 ? "logs-first-row" : undefined}
               tabIndex={0}
               data-state={
                 open && selected?.id === log.id ? "selected" : undefined
@@ -139,7 +147,10 @@ export function LogsTable({ logs }: { logs: LogView[] }) {
               >
                 <span className="block truncate">{log.appName}</span>
                 {(log.tags?.length || log.pii_found?.length) && (
-                  <span className="mt-1 flex flex-wrap gap-1">
+                  <span
+                    data-tour={index === firstBadged ? "logs-tags" : undefined}
+                    className="mt-1 flex flex-wrap gap-1"
+                  >
                     {log.pii_found?.length ? (
                       <Badge variant="outline" className="font-normal">
                         <ShieldCheckIcon />

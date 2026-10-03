@@ -68,7 +68,10 @@ export function UsageSection({
 
   return (
     <div className="grid min-w-0 gap-4">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div
+        className="grid grid-cols-2 gap-4 lg:grid-cols-4"
+        data-tour="app-usage-stats"
+      >
         {stats.map((stat) => (
           <Card key={stat.label} size="sm">
             <CardHeader>
@@ -82,7 +85,7 @@ export function UsageSection({
       </div>
 
       {monthlyBudget != null && (
-        <Card size="sm">
+        <Card size="sm" data-tour="app-usage-budget">
           <CardHeader>
             <CardDescription>Budget this month (UTC)</CardDescription>
             <CardTitle className="tabular-nums">
@@ -101,21 +104,21 @@ export function UsageSection({
         </Card>
       )}
 
-      <Card className="py-0">
-        <CardContent className="px-0">
-          {rows.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <ChartNoAxesColumnIcon />
-                </EmptyMedia>
-                <EmptyTitle>No usage in the last 30 days</EmptyTitle>
-                <EmptyDescription>
-                  Requests made with this app&apos;s keys show up here.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
+      {rows.length === 0 ? (
+        <Empty className="min-h-80 border" data-tour="app-usage-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ChartNoAxesColumnIcon />
+            </EmptyMedia>
+            <EmptyTitle>No usage in the last 30 days</EmptyTitle>
+            <EmptyDescription>
+              Requests made with this app&apos;s keys show up here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <Card className="py-0" data-tour="app-usage-table">
+          <CardContent className="px-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -166,9 +169,9 @@ export function UsageSection({
                 ))}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

@@ -60,7 +60,7 @@ export function LogFiltersBar({
   const modelListed = !filters.model || models.includes(filters.model)
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div data-tour="logs-filters" className="flex flex-wrap items-center gap-2">
       <Select
         value={filters.range}
         onValueChange={(value) => update({ range: value as RangeValue })}
@@ -162,7 +162,7 @@ export function LogFiltersBar({
         </Badge>
       )}
 
-      <div className="flex items-center gap-1">
+      <div data-tour="logs-refresh" className="flex items-center gap-1">
         {!isDefault && (
           <Button
             variant="ghost"

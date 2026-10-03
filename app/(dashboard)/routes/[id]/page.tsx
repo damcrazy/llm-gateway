@@ -7,6 +7,7 @@ import { FlaskConicalIcon } from "lucide-react"
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { CopyButton } from "@/components/animate-ui/components/buttons/copy"
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Badge } from "@/components/ui/badge"
 import {
   Breadcrumb,
@@ -180,6 +181,7 @@ export default async function RoutePage({
 
   return (
     <>
+      <PageTour id="route" />
       <div className="space-y-3">
         <Breadcrumb>
           <BreadcrumbList>
@@ -207,7 +209,10 @@ export default async function RoutePage({
           description={route.description || "No description."}
           actions={
             <>
-              <div className="flex h-9 items-center gap-1 rounded-md border bg-muted/40 pr-1 pl-3">
+              <div
+                data-tour="route-snippet"
+                className="flex h-9 items-center gap-1 rounded-md border bg-muted/40 pr-1 pl-3"
+              >
                 <code className="font-mono text-sm">{snippet}</code>
                 <CopyButton
                   content={snippet}

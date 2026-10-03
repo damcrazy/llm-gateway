@@ -79,7 +79,12 @@ export function DiscoverModelsButton({
 
   return (
     <>
-      <Button variant="outline" onClick={discover} disabled={loading}>
+      <Button
+        variant="outline"
+        onClick={discover}
+        disabled={loading}
+        data-tour="provider-discover"
+      >
         {loading ? <Spinner /> : <RadarIcon />}
         Discover models
       </Button>

@@ -10,6 +10,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+import { PageTour } from "@/components/tour/tour-provider"
 import { getOrigin, requireMember } from "@/lib/auth"
 import { createClient } from "@/lib/supabase/server"
 
@@ -64,6 +65,7 @@ export default async function PromptPage({ params }: Props) {
 
   return (
     <>
+      <PageTour id="prompt" />
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>

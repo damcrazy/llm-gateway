@@ -200,7 +200,7 @@ export function BucketsBoard({
   }, [board.columns])
 
   return (
-    <Card>
+    <Card data-tour="app-buckets">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           Buckets
@@ -220,6 +220,7 @@ export function BucketsBoard({
             size="sm"
             onClick={() => setCreating(true)}
             disabled={keys.length >= MAX_BUCKETS}
+            data-tour="app-new-bucket"
           >
             <PlusIcon />
             New bucket
@@ -228,7 +229,7 @@ export function BucketsBoard({
       </CardHeader>
       <CardContent className="grid gap-5">
         {keys.length === 0 ? (
-          <Empty className="border border-dashed">
+          <Empty className="border border-dashed" data-tour="app-buckets-empty">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <LayersIcon />
@@ -306,6 +307,7 @@ export function BucketsBoard({
         <Field
           orientation="horizontal"
           className="rounded-lg border bg-muted/30 p-4"
+          data-tour="app-only-buckets"
         >
           <FieldContent>
             <FieldLabel htmlFor="only-bucket-models">
@@ -422,6 +424,7 @@ function BucketColumn({
   return (
     <KanbanColumn
       value={bucketKey}
+      data-tour="app-bucket"
       className={cn(
         "w-76 shrink-0 gap-3 rounded-xl bg-muted/40 p-3 transition-colors dark:bg-muted/20",
         dropping && "border-primary bg-primary/5 ring-2 ring-primary/30"
@@ -493,6 +496,7 @@ function BucketColumn({
               size="icon-sm"
               className="size-6"
               aria-label={`Bucket ${name} options`}
+              data-tour="app-bucket-menu"
             >
               <EllipsisIcon />
             </Button>
@@ -529,7 +533,7 @@ function BucketColumn({
           const model = modelsById.get(item.modelId)
           return (
             <KanbanItem key={item.key} value={item.key} asChild>
-              <div className="rounded-lg">
+              <div className="rounded-lg" data-tour="app-bucket-card">
                 {model ? (
                   <ModelCardBody
                     model={model}
@@ -612,7 +616,7 @@ function BucketStrategyRow({
   const hedge =
     HEDGE_OPTIONS.find((o) => o.ms === settings.hedgeAfterMs)?.value ?? "off"
   return (
-    <div className="grid gap-1.5">
+    <div className="grid gap-1.5" data-tour="app-bucket-strategy">
       <div className="grid grid-cols-2 gap-1.5">
         <Select
           value={settings.strategy}

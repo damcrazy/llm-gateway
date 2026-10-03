@@ -62,7 +62,7 @@ export function HealthPanel({
   className?: string
 }) {
   return (
-    <Card className={cn("min-w-0", className)}>
+    <Card data-tour="overview-health" className={cn("min-w-0", className)}>
       <CardHeader>
         <CardTitle>Health</CardTitle>
         <CardDescription>

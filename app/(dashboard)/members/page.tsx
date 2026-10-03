@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { ShieldCheckIcon } from "lucide-react"
 
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -108,9 +109,14 @@ export default async function MembersPage() {
   }
   const roleOrder = { superadmin: 0, admin: 1, member: 2 }
   members.sort((a, b) => roleOrder[a.role] - roleOrder[b.role])
+  // The tour points at the first row with controls (superadmins have none).
+  const firstManaged = members.findIndex(
+    (member) => member.role !== "superadmin"
+  )
 
   return (
     <>
+      <PageTour id="members" />
       <PageHeader
         title="Members"
         description="People who can sign in. Members manage their own apps and keys, limited to the models and budget you set; admins manage everything except people."
@@ -122,16 +128,20 @@ export default async function MembersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-6">Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Model access</TableHead>
-                <TableHead>2FA</TableHead>
-                <TableHead className="text-right">Spend this month</TableHead>
+                <TableHead data-tour="members-col-role">Role</TableHead>
+                <TableHead data-tour="members-col-access">
+                  Model access
+                </TableHead>
+                <TableHead data-tour="members-col-2fa">2FA</TableHead>
+                <TableHead data-tour="members-col-spend" className="text-right">
+                  Spend this month
+                </TableHead>
                 <TableHead className="text-right">Apps</TableHead>
                 <TableHead className="w-40 pr-6" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map((member) => {
+              {members.map((member, index) => {
                 const budget =
                   member.monthly_budget_usd == null
                     ? null
@@ -184,7 +194,14 @@ export default async function MembersPage() {
                     </TableCell>
                     <TableCell className="pr-6">
                       {member.role !== "superadmin" && (
-                        <div className="flex justify-end gap-1">
+                        <div
+                          data-tour={
+                            index === firstManaged
+                              ? "members-row-actions"
+                              : undefined
+                          }
+                          className="flex justify-end gap-1"
+                        >
                           <EditAccessButton
                             email={member.email}
                             options={options}

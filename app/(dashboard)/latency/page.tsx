@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -64,6 +65,7 @@ export default async function LatencyPage({
 
   return (
     <>
+      <PageTour id="latency" />
       <PageHeader
         title="Latency"
         description={
@@ -80,25 +82,24 @@ export default async function LatencyPage({
       />
 
       {summary.calls === 0 ? (
-        <Card>
-          <CardContent>
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <GaugeIcon />
-                </EmptyMedia>
-                <EmptyTitle>No calls to measure yet</EmptyTitle>
-                <EmptyDescription>
-                  {LATENCY_RANGES[range].long}, no API calls with a timing
-                  breakdown. Calls made from now on show up here.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty className="border" data-tour="latency-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <GaugeIcon />
+            </EmptyMedia>
+            <EmptyTitle>No calls to measure yet</EmptyTitle>
+            <EmptyDescription>
+              {LATENCY_RANGES[range].long}, no API calls with a timing
+              breakdown. Calls made from now on show up here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div
+            data-tour="latency-tiles"
+            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          >
             <Tile
               icon={TimerIcon}
               label="Total, median"
@@ -125,7 +126,7 @@ export default async function LatencyPage({
             />
           </div>
 
-          <Card>
+          <Card data-tour="latency-phases">
             <CardHeader>
               <CardTitle>Where the gateway&apos;s time goes</CardTitle>
               <CardDescription>
@@ -142,7 +143,7 @@ export default async function LatencyPage({
           </Card>
 
           <Card className="pb-0">
-            <CardHeader>
+            <CardHeader data-tour="latency-calls">
               <CardTitle>Recent calls</CardTitle>
               <CardDescription>
                 Each bar is one call&apos;s total time, split by where it went.
@@ -222,7 +223,7 @@ export default async function LatencyPage({
             </CardContent>
           </Card>
 
-          <Card className="pb-0">
+          <Card className="pb-0" data-tour="latency-models">
             <CardHeader>
               <CardTitle>By model</CardTitle>
               <CardDescription>

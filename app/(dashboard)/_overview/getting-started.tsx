@@ -75,7 +75,10 @@ export function GettingStarted({
   const next = steps.find((step) => !step.done)
 
   return (
-    <Card className={cn("min-w-0", className)}>
+    <Card
+      data-tour="overview-getting-started"
+      className={cn("min-w-0", className)}
+    >
       <CardContent>
         <Empty className="p-4 md:p-8">
           <EmptyHeader>

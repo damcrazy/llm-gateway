@@ -72,7 +72,7 @@ export function NewPromptDialog({ label = "New prompt" }: { label?: string }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button>
+        <Button data-tour="prompts-new">
           <PlusIcon />
           {label}
         </Button>

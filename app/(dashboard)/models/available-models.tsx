@@ -148,7 +148,7 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
 
   return (
     <>
-      <p className="text-sm text-muted-foreground">
+      <p data-tour="models-access" className="text-sm text-muted-foreground">
         From the gateway&apos;s shared providers, your account can call{" "}
         {describePolicy(policy)}
         {member.monthlyBudgetUsd != null &&
@@ -162,7 +162,7 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
         tab.
       </p>
 
-      <Card className="pb-0">
+      <Card data-tour="models-routes" className="pb-0">
         <CardHeader>
           <CardTitle>Routes</CardTitle>
           <CardDescription>

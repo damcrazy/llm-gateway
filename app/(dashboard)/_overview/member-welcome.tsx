@@ -54,7 +54,7 @@ export function MemberWelcome({ member }: { member: SessionMember }) {
         : "every model on this gateway"
 
   return (
-    <Card>
+    <Card data-tour="overview-member-welcome">
       <CardContent>
         <Empty className="p-6">
           <EmptyHeader>

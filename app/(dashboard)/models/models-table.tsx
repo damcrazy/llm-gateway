@@ -171,9 +171,15 @@ export function ModelsExplorer({
     setFilters((current) => ({ ...current, [key]: value }))
   }
 
+  // Guided-tour targets on the Models page (not on a provider's page).
+  const onModelsPage = (target: string) => (providerScoped ? undefined : target)
+
   return (
     <div className="grid gap-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <div
+        data-tour={onModelsPage("models-filters")}
+        className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
+      >
         <InputGroup className="sm:w-64">
           <InputGroupAddon>
             <SearchIcon />
@@ -242,12 +248,15 @@ export function ModelsExplorer({
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <PriceTierFilter
-          value={filters.tier}
-          onChange={(value) => set("tier", value)}
-          counts={tierCounts}
-        />
+        <div data-tour={onModelsPage("models-price-tiers")} className="w-fit">
+          <PriceTierFilter
+            value={filters.tier}
+            onChange={(value) => set("tier", value)}
+            counts={tierCounts}
+          />
+        </div>
         <BulkEnableButtons
+          tourId={onModelsPage("models-bulk")}
           models={visible}
           scope={
             filters.tier === ALL
@@ -325,11 +334,15 @@ export function ModelsTable({
   models: ModelListItem[]
   showProvider?: boolean
 }) {
+  // Guided-tour targets: the Models page shows providers; a provider's doesn't.
+  const onModelsPage = (target: string) => (showProvider ? target : undefined)
   return (
     <Card className="py-0">
       <CardContent className="px-0">
         <Table>
-          <TableHeader>
+          <TableHeader
+            data-tour={showProvider ? undefined : "provider-columns"}
+          >
             <TableRow>
               <TableHead className="pl-6">Model</TableHead>
               {showProvider && <TableHead>Provider</TableHead>}
@@ -337,8 +350,15 @@ export function ModelsTable({
               <TableHead>Capabilities</TableHead>
               {showProvider && <TableHead>Tags</TableHead>}
               <TableHead className="text-right">Context</TableHead>
-              <TableHead className="text-right">$/1M in / out</TableHead>
-              <TableHead>Health</TableHead>
+              <TableHead
+                data-tour={onModelsPage("models-col-price")}
+                className="text-right"
+              >
+                $/1M in / out
+              </TableHead>
+              <TableHead data-tour={onModelsPage("models-col-health")}>
+                Health
+              </TableHead>
               <TableHead>Enabled</TableHead>
               <TableHead className="pr-6">
                 <span className="sr-only">Actions</span>
@@ -346,7 +366,7 @@ export function ModelsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {models.map((model) => (
+            {models.map((model, index) => (
               <TableRow key={model.id}>
                 <TableCell className="pl-6">
                   <div className="font-mono text-sm font-medium">
@@ -420,9 +440,23 @@ export function ModelsTable({
                 <TableCell className="pr-6">
                   <div className="flex items-center justify-end gap-1">
                     {!showProvider && (
-                      <TestModelButton id={model.id} slug={model.slug} />
+                      <div
+                        data-tour={index === 0 ? "provider-test" : undefined}
+                        className="flex"
+                      >
+                        <TestModelButton id={model.id} slug={model.slug} />
+                      </div>
                     )}
-                    <ModelRowActions model={model} />
+                    <div
+                      data-tour={
+                        index === 0
+                          ? onModelsPage("models-row-actions")
+                          : undefined
+                      }
+                      className="flex"
+                    >
+                      <ModelRowActions model={model} />
+                    </div>
                   </div>
                 </TableCell>
               </TableRow>
@@ -438,15 +472,18 @@ export function ModelsTable({
 function BulkEnableButtons({
   models,
   scope,
+  tourId,
 }: {
   models: ModelListItem[]
   scope: string
+  /** data-tour target for the guided tour. */
+  tourId?: string
 }) {
   const toEnable = models.filter((model) => !model.enabled)
   const toDisable = models.filter((model) => model.enabled)
 
   return (
-    <div className="flex flex-wrap gap-2 sm:ml-auto">
+    <div data-tour={tourId} className="flex flex-wrap gap-2 sm:ml-auto">
       <BulkAction
         enable
         models={toEnable}

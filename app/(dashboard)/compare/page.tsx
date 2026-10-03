@@ -4,6 +4,7 @@ import { BoxesIcon } from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import {
   Empty,
   EmptyContent,
@@ -61,11 +62,12 @@ export default async function ComparePage({
   if (!me.isAdmin && apps.length === 0) {
     return (
       <>
+        <PageTour id="compare" />
         <PageHeader
           title="Compare"
           description="Send the same conversation to several models side by side."
         />
-        <Empty className="border">
+        <Empty className="border" data-tour="compare-empty">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <BoxesIcon />
@@ -120,6 +122,7 @@ export default async function ComparePage({
 
   return (
     <>
+      <PageTour id="compare" />
       <PageHeader
         title="Compare"
         description="Send the same conversation to several models at once and compare answers, speed and cost. Requests run through the real gateway and show up in Logs."

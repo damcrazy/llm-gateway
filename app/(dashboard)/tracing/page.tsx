@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { CircleCheckIcon, CircleXIcon, InfoIcon } from "lucide-react"
 
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { requireMember } from "@/lib/auth"
 import { formatDateTime, formatRelative } from "@/lib/format"
@@ -46,13 +47,14 @@ export default async function TracingPage() {
 
   return (
     <>
+      <PageTour id="tracing" />
       <PageHeader
         title="Tracing"
         description="Send every request from your apps to Langfuse or an OpenTelemetry collector."
       />
       <div className="grid max-w-3xl gap-6">
         {active && failing ? (
-          <Alert variant="destructive">
+          <Alert data-tour="tracing-status" variant="destructive">
             <CircleXIcon />
             <AlertTitle>
               The last export failed {formatRelative(view.lastErrorAt)}
@@ -60,7 +62,7 @@ export default async function TracingPage() {
             <AlertDescription>{view.lastError}</AlertDescription>
           </Alert>
         ) : active && view.lastSuccessAt ? (
-          <Alert>
+          <Alert data-tour="tracing-status">
             <CircleCheckIcon />
             <AlertTitle>Exporting</AlertTitle>
             <AlertDescription>
@@ -69,7 +71,7 @@ export default async function TracingPage() {
             </AlertDescription>
           </Alert>
         ) : null}
-        <Alert>
+        <Alert data-tour="tracing-what">
           <InfoIcon />
           <AlertTitle>What is sent</AlertTitle>
           <AlertDescription>

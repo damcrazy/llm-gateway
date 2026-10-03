@@ -322,7 +322,7 @@ export function PlaygroundClient({
         </CardHeader>
         <CardContent>
           <FieldGroup className="gap-5">
-            <Field>
+            <Field data-tour="playground-app">
               <FieldLabel htmlFor="playground-app">Run as</FieldLabel>
               <Select
                 value={appId ?? NO_APP}
@@ -363,7 +363,7 @@ export function PlaygroundClient({
                   : "Unrestricted test as you; usage is logged without an app."}
               </FieldDescription>
             </Field>
-            <Field>
+            <Field data-tour="playground-model">
               <FieldLabel htmlFor="playground-model">
                 Route or model
                 {loadingOptions && <Spinner className="size-3" />}
@@ -446,7 +446,7 @@ export function PlaygroundClient({
                     : "Direct model call: no fallback to other models."}
               </FieldDescription>
             </Field>
-            <Field>
+            <Field data-tour="playground-system">
               <FieldLabel htmlFor="playground-system">System prompt</FieldLabel>
               <Textarea
                 id="playground-system"
@@ -456,7 +456,10 @@ export function PlaygroundClient({
                 onChange={(event) => setSystem(event.target.value)}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div
+              data-tour="playground-params"
+              className="grid grid-cols-2 gap-4"
+            >
               <Field>
                 <FieldLabel htmlFor="playground-temperature">
                   Temperature
@@ -493,7 +496,7 @@ export function PlaygroundClient({
         </CardContent>
       </Card>
 
-      <Card className="min-w-0 gap-0 py-0">
+      <Card data-tour="playground-conversation" className="min-w-0 gap-0 py-0">
         <CardHeader className="border-b py-4 [.border-b]:pb-4">
           <CardTitle>Conversation</CardTitle>
           <CardDescription>
@@ -571,6 +574,7 @@ export function PlaygroundClient({
         </CardContent>
         <CardFooter className="border-t p-4 [.border-t]:pt-4">
           <form
+            data-tour="playground-composer"
             className="grid w-full gap-2"
             onSubmit={(event) => {
               event.preventDefault()

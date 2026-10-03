@@ -32,7 +32,7 @@ export function IntegrateSection({
 
   return (
     <div className="grid min-w-0 gap-6">
-      <Card className="gap-4 pb-0">
+      <Card className="gap-4 pb-0" data-tour="app-integrate-endpoints">
         <CardHeader>
           <CardTitle>Endpoints</CardTitle>
           <CardDescription>

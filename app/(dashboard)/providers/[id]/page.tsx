@@ -12,6 +12,7 @@ import {
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Badge } from "@/components/ui/badge"
 import {
   Breadcrumb,
@@ -102,7 +103,10 @@ export default async function ProviderPage({ params }: Props) {
       providerSlug={provider.slug}
       providerType={provider.type}
       trigger={
-        <Button variant={spec.canDiscoverModels ? "outline" : "default"}>
+        <Button
+          variant={spec.canDiscoverModels ? "outline" : "default"}
+          data-tour="provider-add-model"
+        >
           <PlusIcon />
           Add model manually
         </Button>
@@ -112,6 +116,7 @@ export default async function ProviderPage({ params }: Props) {
 
   return (
     <>
+      <PageTour id="provider" />
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -160,7 +165,7 @@ export default async function ProviderPage({ params }: Props) {
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2" data-tour="provider-settings">
           <CardHeader>
             <CardTitle>Settings</CardTitle>
             <CardDescription>
@@ -179,7 +184,7 @@ export default async function ProviderPage({ params }: Props) {
           </CardContent>
         </Card>
 
-        <Card className="self-start">
+        <Card className="self-start" data-tour="provider-credentials">
           <CardHeader>
             <CardTitle>Credentials</CardTitle>
             <CardDescription>

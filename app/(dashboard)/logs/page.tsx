@@ -4,6 +4,7 @@ import { ScrollTextIcon, TriangleAlertIcon } from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -138,6 +139,7 @@ export default async function LogsPage({ searchParams }: Props) {
 
   return (
     <>
+      <PageTour id="logs" />
       <PageHeader
         title="Logs"
         description="Every request that went through the gateway. Click a row for attempts and payloads."
@@ -154,40 +156,41 @@ export default async function LogsPage({ searchParams }: Props) {
           <AlertDescription>{queryError}</AlertDescription>
         </Alert>
       )}
-      <Card className="py-0">
-        <CardContent className="px-0">
-          {logs.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <ScrollTextIcon />
-                </EmptyMedia>
-                <EmptyTitle>No requests</EmptyTitle>
-                <EmptyDescription>
-                  {pastEnd || (filters.page > 1 && total > 0)
-                    ? "This page is past the end of the results."
-                    : `Nothing matches these filters in the ${rangeLabel}.`}
-                </EmptyDescription>
-              </EmptyHeader>
-              {(pastEnd || (filters.page > 1 && total > 0)) && (
-                <EmptyContent>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link
-                      href={`/logs${filtersToQuery({ ...filters, page: 1 })}`}
-                    >
-                      Back to the first page
-                    </Link>
-                  </Button>
-                </EmptyContent>
-              )}
-            </Empty>
-          ) : (
-            <LogsTable logs={logs} />
+      {logs.length === 0 ? (
+        <Empty className="border" data-tour="logs-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ScrollTextIcon />
+            </EmptyMedia>
+            <EmptyTitle>No requests</EmptyTitle>
+            <EmptyDescription>
+              {pastEnd || (filters.page > 1 && total > 0)
+                ? "This page is past the end of the results."
+                : `Nothing matches these filters in the ${rangeLabel}.`}
+            </EmptyDescription>
+          </EmptyHeader>
+          {(pastEnd || (filters.page > 1 && total > 0)) && (
+            <EmptyContent>
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/logs${filtersToQuery({ ...filters, page: 1 })}`}>
+                  Back to the first page
+                </Link>
+              </Button>
+            </EmptyContent>
           )}
-        </CardContent>
-      </Card>
+        </Empty>
+      ) : (
+        <Card className="py-0">
+          <CardContent className="px-0">
+            <LogsTable logs={logs} />
+          </CardContent>
+        </Card>
+      )}
       {total > 0 && (
-        <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
+        <div
+          data-tour="logs-pagination"
+          className="flex flex-col items-center justify-between gap-3 sm:flex-row"
+        >
           <p className="text-sm whitespace-nowrap text-muted-foreground">
             {firstShown <= lastShown
               ? `${formatNumber(firstShown)}–${formatNumber(lastShown)} of ${formatNumber(total)}`

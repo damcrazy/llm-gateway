@@ -124,7 +124,10 @@ export function AvailableModelsTable({ models }: { models: AvailableModel[] }) {
 
   return (
     <div className="grid gap-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <div
+        data-tour="models-member-filters"
+        className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
+      >
         <InputGroup className="sm:w-64">
           <InputGroupAddon>
             <SearchIcon />
@@ -137,17 +140,19 @@ export function AvailableModelsTable({ models }: { models: AvailableModel[] }) {
           />
         </InputGroup>
         {hasOwn && (
-          <ModelSourceFilter
-            value={source}
-            onChange={(next) => {
-              setSource(next)
-              setProvider(ALL_PROVIDERS)
-            }}
-            counts={{
-              own: searched.filter((model) => model.own).length,
-              shared: searched.filter((model) => !model.own).length,
-            }}
-          />
+          <div data-tour="models-source" className="w-fit">
+            <ModelSourceFilter
+              value={source}
+              onChange={(next) => {
+                setSource(next)
+                setProvider(ALL_PROVIDERS)
+              }}
+              counts={{
+                own: searched.filter((model) => model.own).length,
+                shared: searched.filter((model) => !model.own).length,
+              }}
+            />
+          </div>
         )}
         <Select value={provider} onValueChange={setProvider}>
           <SelectTrigger
@@ -193,16 +198,18 @@ export function AvailableModelsTable({ models }: { models: AvailableModel[] }) {
             )}
           </SelectContent>
         </Select>
-        <PriceTierFilter
-          value={tier}
-          onChange={setTier}
-          counts={countByTier(scoped, tierOf)}
-        />
+        <div data-tour="models-price-tiers" className="w-fit">
+          <PriceTierFilter
+            value={tier}
+            onChange={setTier}
+            counts={countByTier(scoped, tierOf)}
+          />
+        </div>
       </div>
       <Card className="py-0">
         <CardContent className="px-0">
           <Table>
-            <TableHeader>
+            <TableHeader data-tour="models-member-columns">
               <TableRow>
                 <TableHead className="pl-6">Model</TableHead>
                 <TableHead>Kind</TableHead>

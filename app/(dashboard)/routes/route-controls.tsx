@@ -79,7 +79,7 @@ export function NewRouteDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={variant}>
+        <Button data-tour="routes-new" variant={variant}>
           <PlusIcon />
           New route
         </Button>

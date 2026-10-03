@@ -3,6 +3,7 @@ import Link from "next/link"
 import { MessageSquareTextIcon } from "lucide-react"
 
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -48,10 +49,11 @@ export default async function PromptsPage() {
 
   return (
     <>
+      <PageTour id="prompts" />
       <PageHeader
         title="Prompts"
         description="Saved prompts with versions. Apps call them by slug and fill in the blanks, so you can change the wording without changing code."
-        actions={<NewPromptDialog />}
+        actions={prompts.length > 0 && <NewPromptDialog />}
       />
       {error && (
         <Alert variant="destructive">
@@ -59,28 +61,28 @@ export default async function PromptsPage() {
           <AlertDescription>{error.message}</AlertDescription>
         </Alert>
       )}
-      <Card className="py-0">
-        <CardContent className="px-0">
-          {prompts.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <MessageSquareTextIcon />
-                </EmptyMedia>
-                <EmptyTitle>No prompts yet</EmptyTitle>
-                <EmptyDescription>
-                  A prompt is a set of messages with blanks like{" "}
-                  <code className="font-mono text-xs">{"{{name}}"}</code>. Your
-                  apps send its slug and the values, and the gateway puts the
-                  messages in front of theirs. Every save is a new version, and
-                  you choose which one apps get.
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                <NewPromptDialog label="Create your first prompt" />
-              </EmptyContent>
-            </Empty>
-          ) : (
+      {prompts.length === 0 ? (
+        <Empty data-tour="prompts-empty" className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MessageSquareTextIcon />
+            </EmptyMedia>
+            <EmptyTitle>No prompts yet</EmptyTitle>
+            <EmptyDescription>
+              A prompt is a set of messages with blanks like{" "}
+              <code className="font-mono text-xs">{"{{name}}"}</code>. Your apps
+              send its slug and the values, and the gateway puts the messages in
+              front of theirs. Every save is a new version, and you choose which
+              one apps get.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <NewPromptDialog label="Create your first prompt" />
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <Card data-tour="prompts-table" className="py-0">
+          <CardContent className="px-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -93,14 +95,17 @@ export default async function PromptsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {prompts.map((prompt) => {
+                {prompts.map((prompt, index) => {
                   const latest = Math.max(
                     0,
                     ...prompt.prompt_versions.map((v) => v.version)
                   )
                   return (
                     <TableRow key={prompt.id}>
-                      <TableCell className="max-w-72 pl-6 font-medium">
+                      <TableCell
+                        data-tour={index === 0 ? "prompts-name" : undefined}
+                        className="max-w-72 pl-6 font-medium"
+                      >
                         <Link
                           href={`/prompts/${prompt.id}`}
                           className="block truncate hover:underline"
@@ -113,7 +118,10 @@ export default async function PromptsPage() {
                           </p>
                         )}
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
+                      <TableCell
+                        data-tour={index === 0 ? "prompts-slug" : undefined}
+                        className="font-mono text-xs text-muted-foreground"
+                      >
                         {prompt.slug}
                       </TableCell>
                       {showOwner && (
@@ -123,10 +131,17 @@ export default async function PromptsPage() {
                             : prompt.owner_email}
                         </TableCell>
                       )}
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell
+                        data-tour={index === 0 ? "prompts-latest" : undefined}
+                        className="text-right tabular-nums"
+                      >
                         {latest ? `v${latest}` : "—"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        data-tour={
+                          index === 0 ? "prompts-published" : undefined
+                        }
+                      >
                         {prompt.published_version == null ? (
                           <Badge variant="outline">Latest</Badge>
                         ) : (
@@ -146,9 +161,9 @@ export default async function PromptsPage() {
                 })}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </>
   )
 }

@@ -232,7 +232,7 @@ export function CompareClient({
         </Alert>
       )}
       {ready && (
-        <Alert>
+        <Alert data-tour="compare-prefill">
           {ready.source === "replay" ? (
             <HistoryIcon />
           ) : (
@@ -259,7 +259,7 @@ export function CompareClient({
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="flex flex-wrap items-end gap-3">
-            <Field className="w-full sm:w-64">
+            <Field data-tour="compare-app" className="w-full sm:w-64">
               <FieldLabel htmlFor="compare-app">Run as</FieldLabel>
               <Select
                 value={appId ?? NO_APP}
@@ -284,7 +284,10 @@ export function CompareClient({
             </Field>
             {loadingOptions && <Spinner className="mb-2.5" />}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div
+            data-tour="compare-pickers"
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          >
             {models.map((model, index) => (
               <div key={index} className="flex items-end gap-1">
                 <Field className="min-w-0 flex-1">
@@ -386,7 +389,7 @@ export function CompareClient({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-tour="compare-conversation">
         <CardHeader>
           <CardTitle>Conversation</CardTitle>
           <CardDescription>
@@ -395,7 +398,7 @@ export function CompareClient({
         </CardHeader>
         <CardContent className="grid gap-4">
           {variableNames.length > 0 && (
-            <FieldSet className="gap-3">
+            <FieldSet data-tour="compare-variables" className="gap-3">
               <FieldLegend variant="label" className="mb-0">
                 Variables
               </FieldLegend>
@@ -497,7 +500,10 @@ export function CompareClient({
               </Button>
             ))}
           </div>
-          <div className="grid gap-3 sm:grid-cols-[repeat(2,minmax(0,12rem))_1fr] sm:items-end">
+          <div
+            data-tour="compare-run"
+            className="grid gap-3 sm:grid-cols-[repeat(2,minmax(0,12rem))_1fr] sm:items-end"
+          >
             <Field>
               <FieldLabel htmlFor="compare-temperature">Temperature</FieldLabel>
               <Input
@@ -540,7 +546,10 @@ export function CompareClient({
       </Card>
 
       {Object.keys(slots).length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+        <div
+          data-tour="compare-results"
+          className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4"
+        >
           {models.map((model, index) => {
             const slot = slots[index]
             if (!model || !slot || slot.state === "idle") return null

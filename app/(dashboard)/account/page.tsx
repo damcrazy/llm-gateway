@@ -2,6 +2,8 @@ import type { Metadata } from "next"
 import { KeyRoundIcon, MailIcon, ShieldCheckIcon } from "lucide-react"
 
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
+import { TourSettings } from "@/components/tour/tour-settings"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -53,6 +55,7 @@ export default async function AccountPage() {
 
   return (
     <>
+      <PageTour id="account" />
       <PageHeader
         title="Account & security"
         description={
@@ -62,7 +65,7 @@ export default async function AccountPage() {
         }
       />
 
-      <Card>
+      <Card data-tour="account-sign-in">
         <CardHeader>
           <CardTitle>Sign-in methods</CardTitle>
           <CardDescription>
@@ -112,7 +115,7 @@ export default async function AccountPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-tour="account-2fa">
         <CardHeader>
           <CardTitle>Two-factor authentication</CardTitle>
           <CardDescription>
@@ -154,6 +157,17 @@ export default async function AccountPage() {
               )}
             />
           </div>
+        </CardContent>
+      </Card>
+      <Card data-tour="account-tours">
+        <CardHeader>
+          <CardTitle>Guided tours</CardTitle>
+          <CardDescription>
+            Short walkthroughs that explain each page of the dashboard.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TourSettings />
         </CardContent>
       </Card>
     </>

@@ -17,6 +17,7 @@ import {
   TabsTrigger,
 } from "@/components/animate-ui/components/radix/tabs"
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Breadcrumb,
@@ -238,6 +239,7 @@ export default async function AppPage({ params, searchParams }: Props) {
 
   return (
     <>
+      <PageTour id="app" />
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -277,9 +279,13 @@ export default async function AppPage({ params, searchParams }: Props) {
       )}
       <Tabs defaultValue={initialTab} className="min-w-0 gap-4">
         <div className="-mx-1 overflow-x-auto px-1 pb-1">
-          <TabsList>
+          <TabsList data-tour="app-tabs">
             {TABS.map(({ value, label, icon: Icon }) => (
-              <TabsTrigger key={value} value={value}>
+              <TabsTrigger
+                key={value}
+                value={value}
+                data-tour={`app-tab-${value}`}
+              >
                 <Icon />
                 {label}
               </TabsTrigger>
@@ -288,18 +294,22 @@ export default async function AppPage({ params, searchParams }: Props) {
         </div>
 
         <TabsContent value="keys" className="min-w-0">
+          <PageTour id="app-keys" />
           <KeysSection appId={app.id} keys={keys} />
         </TabsContent>
 
         <TabsContent value="models" className="min-w-0">
+          <PageTour id="app-models" />
           <ModelsSection appId={app.id} data={bucketsData} />
         </TabsContent>
 
         <TabsContent value="settings" className="min-w-0">
+          <PageTour id="app-settings" />
           <AppSettingsForm key={app.updated_at} app={app} />
         </TabsContent>
 
         <TabsContent value="usage" className="min-w-0">
+          <PageTour id="app-usage" />
           <UsageSection
             rows={usage}
             modelSlugs={modelSlugs}
@@ -313,6 +323,7 @@ export default async function AppPage({ params, searchParams }: Props) {
         </TabsContent>
 
         <TabsContent value="integrate" className="min-w-0">
+          <PageTour id="app-integrate" />
           <IntegrateSection
             origin={origin}
             model={snippetModel}
@@ -321,7 +332,8 @@ export default async function AppPage({ params, searchParams }: Props) {
         </TabsContent>
 
         <TabsContent value="danger" className="min-w-0">
-          <Card className="ring-destructive/40">
+          <PageTour id="app-danger" />
+          <Card className="ring-destructive/40" data-tour="app-delete">
             <CardHeader>
               <CardTitle>Delete this app</CardTitle>
               <CardDescription>

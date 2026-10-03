@@ -54,7 +54,11 @@ export function AuditFilters({
         value={area ?? ALL}
         onValueChange={(value) => update({ area: value === ALL ? "" : value })}
       >
-        <SelectTrigger aria-label="Area" className="w-full sm:w-48">
+        <SelectTrigger
+          data-tour="audit-area"
+          aria-label="Area"
+          className="w-full sm:w-48"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent position="popper">
@@ -73,7 +77,11 @@ export function AuditFilters({
             update({ actor: value === ALL ? "" : value })
           }
         >
-          <SelectTrigger aria-label="Person" className="w-full sm:w-64">
+          <SelectTrigger
+            data-tour="audit-person"
+            aria-label="Person"
+            className="w-full sm:w-64"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent position="popper" className="max-h-80">

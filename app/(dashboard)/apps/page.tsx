@@ -3,6 +3,7 @@ import Link from "next/link"
 import { BoxesIcon } from "lucide-react"
 
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -65,10 +66,11 @@ export default async function AppsPage() {
 
   return (
     <>
+      <PageTour id="apps" />
       <PageHeader
         title="Apps & keys"
         description="Each project that calls the gateway is an app with its own API keys, limits and usage."
-        actions={<NewAppDialog />}
+        actions={apps.length > 0 && <NewAppDialog />}
       />
       {error && (
         <Alert variant="destructive">
@@ -76,34 +78,39 @@ export default async function AppsPage() {
           <AlertDescription>{error.message}</AlertDescription>
         </Alert>
       )}
-      <Card className="py-0">
-        <CardContent className="px-0">
-          {apps.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <BoxesIcon />
-                </EmptyMedia>
-                <EmptyTitle>No apps yet</EmptyTitle>
-                <EmptyDescription>
-                  Create an app for each project, then give it an API key to
-                  call the gateway.
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                <NewAppDialog label="Create your first app" />
-              </EmptyContent>
-            </Empty>
-          ) : (
+      {apps.length === 0 ? (
+        <Empty className="border" data-tour="apps-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <BoxesIcon />
+            </EmptyMedia>
+            <EmptyTitle>No apps yet</EmptyTitle>
+            <EmptyDescription>
+              Create an app for each project, then give it an API key to call
+              the gateway.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <NewAppDialog label="Create your first app" />
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <Card className="py-0" data-tour="apps-table">
+          <CardContent className="px-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="pl-6">Name</TableHead>
                   <TableHead>Slug</TableHead>
                   {me.isAdmin && <TableHead>Owner</TableHead>}
-                  <TableHead>Status</TableHead>
+                  <TableHead data-tour="apps-status">Status</TableHead>
                   <TableHead className="text-right">Active keys</TableHead>
-                  <TableHead className="text-right">Requests (30d)</TableHead>
+                  <TableHead
+                    className="text-right"
+                    data-tour="apps-usage-columns"
+                  >
+                    Requests (30d)
+                  </TableHead>
                   <TableHead className="text-right">Spend (30d)</TableHead>
                   <TableHead className="pr-6">Created</TableHead>
                 </TableRow>
@@ -117,6 +124,7 @@ export default async function AppsPage() {
                         <Link
                           href={`/apps/${app.id}`}
                           className="block truncate hover:underline"
+                          data-tour="apps-open"
                         >
                           {app.name}
                         </Link>
@@ -160,9 +168,9 @@ export default async function AppsPage() {
                 })}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </>
   )
 }

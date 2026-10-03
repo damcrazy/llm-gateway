@@ -4,6 +4,7 @@ import { ChevronRightIcon, KeyRoundIcon, ServerIcon } from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -72,6 +73,7 @@ export default async function ProvidersPage() {
 
   return (
     <>
+      <PageTour id="providers" />
       <PageHeader
         title={me.isAdmin ? "Providers" : "Your providers"}
         description={
@@ -87,28 +89,24 @@ export default async function ProvidersPage() {
       />
 
       {providers.length === 0 ? (
-        <Card>
-          <CardContent>
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <ServerIcon />
-                </EmptyMedia>
-                <EmptyTitle>No providers yet</EmptyTitle>
-                <EmptyDescription>
-                  {me.isAdmin
-                    ? "Connect OpenAI, Anthropic, Bedrock, Vertex, a local Ollama or anything OpenAI-compatible, then add its models."
-                    : "Bring your own OpenAI, Anthropic, Gemini, OpenRouter… key. Only your apps can use its models, and they're not limited by the free-models plan."}
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                <AddProviderDialog own={!me.isAdmin} slugPrefix={slugPrefix} />
-              </EmptyContent>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty className="border" data-tour="providers-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ServerIcon />
+            </EmptyMedia>
+            <EmptyTitle>No providers yet</EmptyTitle>
+            <EmptyDescription>
+              {me.isAdmin
+                ? "Connect OpenAI, Anthropic, Bedrock, Vertex, a local Ollama or anything OpenAI-compatible, then add its models."
+                : "Bring your own OpenAI, Anthropic, Gemini, OpenRouter… key. Only your apps can use its models, and they're not limited by the free-models plan."}
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <AddProviderDialog own={!me.isAdmin} slugPrefix={slugPrefix} />
+          </EmptyContent>
+        </Empty>
       ) : (
-        <Card className="py-0">
+        <Card className="py-0" data-tour="providers-table">
           <CardContent className="px-0">
             <Table>
               <TableHeader>
@@ -116,16 +114,25 @@ export default async function ProvidersPage() {
                   <TableHead className="pl-6">Provider</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Endpoint</TableHead>
-                  <TableHead>Credentials</TableHead>
-                  <TableHead className="text-right">Models</TableHead>
-                  <TableHead>Enabled</TableHead>
+                  <TableHead data-tour="providers-col-credentials">
+                    Credentials
+                  </TableHead>
+                  <TableHead
+                    data-tour="providers-col-models"
+                    className="text-right"
+                  >
+                    Models
+                  </TableHead>
+                  <TableHead data-tour="providers-col-enabled">
+                    Enabled
+                  </TableHead>
                   <TableHead className="w-12 pr-6">
                     <span className="sr-only">Open</span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {providers.map((provider) => {
+                {providers.map((provider, index) => {
                   const { typeLabel, presetLabel } = providerKindLabel(
                     provider.type,
                     provider.config
@@ -140,6 +147,7 @@ export default async function ProvidersPage() {
                       <TableCell className="pl-6">
                         <Link
                           href={`/providers/${provider.id}`}
+                          data-tour={index === 0 ? "providers-open" : undefined}
                           className="font-medium underline-offset-4 hover:underline"
                         >
                           {provider.name}
@@ -212,7 +220,7 @@ export default async function ProvidersPage() {
       )}
 
       {membersProviders.length > 0 && (
-        <Card className="py-0">
+        <Card className="py-0" data-tour="providers-members-own">
           <CardContent className="px-0">
             <div className="px-6 pt-5 pb-2">
               <h2 className="font-medium">Members&apos; own providers</h2>

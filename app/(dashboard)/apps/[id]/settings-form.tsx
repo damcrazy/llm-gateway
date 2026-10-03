@@ -156,7 +156,10 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
 
             <FieldSeparator />
 
-            <div className="grid gap-6 md:grid-cols-3">
+            <div
+              className="grid gap-6 md:grid-cols-3"
+              data-tour="app-settings-limits"
+            >
               <Field>
                 <FieldLabel htmlFor="settings-budget">
                   Monthly budget
@@ -231,7 +234,7 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
 
             <FieldSeparator />
 
-            <Field orientation="horizontal">
+            <Field orientation="horizontal" data-tour="app-settings-cache">
               <FieldContent>
                 <FieldLabel htmlFor="settings-cache">Response cache</FieldLabel>
                 <FieldDescription>
@@ -259,7 +262,7 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
               </Select>
             </Field>
 
-            <Field orientation="horizontal">
+            <Field orientation="horizontal" data-tour="app-settings-pii">
               <FieldContent>
                 <FieldLabel htmlFor="settings-pii">
                   Personal data in prompts
@@ -293,7 +296,7 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
               </Select>
             </Field>
 
-            <Field orientation="horizontal">
+            <Field orientation="horizontal" data-tour="app-settings-json">
               <FieldContent>
                 <FieldLabel htmlFor="settings-json-guard">
                   Check structured output
@@ -315,7 +318,7 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
               />
             </Field>
 
-            <Field orientation="horizontal">
+            <Field orientation="horizontal" data-tour="app-settings-payloads">
               <FieldContent>
                 <FieldLabel htmlFor="settings-log-payloads">
                   Log full payloads
@@ -333,7 +336,10 @@ export function AppSettingsForm({ app }: { app: SettingsApp }) {
             </Field>
           </FieldGroup>
         </CardContent>
-        <CardFooter className="justify-end border-t">
+        <CardFooter
+          className="justify-end border-t"
+          data-tour="app-settings-save"
+        >
           <Button type="submit" disabled={pending || !name.trim()}>
             {pending ? <Spinner /> : <SaveIcon />}
             Save settings

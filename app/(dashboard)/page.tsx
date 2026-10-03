@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { CircleAlertIcon } from "lucide-react"
 
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { requireMember } from "@/lib/auth"
 
@@ -34,6 +35,7 @@ export default async function OverviewPage({
 
   return (
     <RangeProvider range={range}>
+      <PageTour id="overview" />
       <PageHeader
         title="Overview"
         description={

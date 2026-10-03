@@ -4,6 +4,7 @@ import { BoxesIcon } from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import {
   Empty,
   EmptyContent,
@@ -52,11 +53,12 @@ export default async function PlaygroundPage({
   if (!me.isAdmin && apps.length === 0) {
     return (
       <>
+        <PageTour id="playground" />
         <PageHeader
           title="Playground"
           description="Try your routes and models before wiring them into code."
         />
-        <Empty className="border">
+        <Empty className="border" data-tour="playground-empty">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <BoxesIcon />
@@ -100,6 +102,7 @@ export default async function PlaygroundPage({
 
   return (
     <>
+      <PageTour id="playground" />
       <PageHeader
         title="Playground"
         description="Send test requests through the real gateway pipeline: routing, fallbacks, cooldowns, cost tracking and logging."

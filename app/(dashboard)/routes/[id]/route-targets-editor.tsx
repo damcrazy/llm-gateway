@@ -167,7 +167,7 @@ export function RouteTargetsEditor({
 
   return (
     <div className="grid min-w-0 gap-6">
-      <Card>
+      <Card data-tour="route-targets">
         <CardHeader>
           <CardTitle>Targets</CardTitle>
           <CardDescription>
@@ -177,7 +177,12 @@ export function RouteTargetsEditor({
           <CardAction>
             <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" disabled={pending}>
+                <Button
+                  data-tour="route-add-model"
+                  variant="outline"
+                  size="sm"
+                  disabled={pending}
+                >
                   <PlusIcon />
                   Add model
                 </Button>
@@ -317,6 +322,7 @@ function TargetItem({
 
   return (
     <Item
+      data-tour={index === 0 ? "route-first-target" : undefined}
       variant="outline"
       size="sm"
       role="listitem"
@@ -411,7 +417,7 @@ function CapabilityCoverage({ targets }: { targets: TargetModel[] }) {
   const total = targets.length
 
   return (
-    <Card>
+    <Card data-tour="route-coverage">
       <CardHeader>
         <CardTitle>Capability coverage</CardTitle>
         <CardDescription>

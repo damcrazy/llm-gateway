@@ -126,7 +126,7 @@ export function AlertSettingsForm({
         </CardHeader>
         <CardContent>
           <FieldGroup>
-            <Field orientation="horizontal">
+            <Field orientation="horizontal" data-tour="alerts-budget">
               <FieldContent>
                 <FieldLabel htmlFor="alert-budget">Budgets</FieldLabel>
                 <FieldDescription>
@@ -147,7 +147,7 @@ export function AlertSettingsForm({
                 </SelectContent>
               </Select>
             </Field>
-            <Field orientation="horizontal">
+            <Field orientation="horizontal" data-tour="alerts-latency">
               <FieldContent>
                 <FieldLabel htmlFor="alert-latency">Slow responses</FieldLabel>
                 <FieldDescription>
@@ -169,7 +169,7 @@ export function AlertSettingsForm({
                 </SelectContent>
               </Select>
             </Field>
-            <Field orientation="horizontal">
+            <Field orientation="horizontal" data-tour="alerts-model-down">
               <FieldContent>
                 <FieldLabel htmlFor="alert-model-down">
                   Failing models
@@ -189,7 +189,7 @@ export function AlertSettingsForm({
 
             <FieldSeparator />
 
-            <Field>
+            <Field data-tour="alerts-webhook">
               <FieldLabel htmlFor="alert-webhook">Webhook</FieldLabel>
               {replacing ? (
                 <Input
@@ -235,7 +235,10 @@ export function AlertSettingsForm({
             </Field>
           </FieldGroup>
         </CardContent>
-        <CardFooter className="justify-between gap-2 border-t">
+        <CardFooter
+          data-tour="alerts-actions"
+          className="justify-between gap-2 border-t"
+        >
           <Button
             type="button"
             variant="outline"

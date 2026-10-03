@@ -138,7 +138,7 @@ export function RouteSettingsForm({
               />
             </Field>
 
-            <Field>
+            <Field data-tour="route-strategy">
               <FieldTitle>Strategy</FieldTitle>
               <RadioGroup
                 value={values.strategy}
@@ -170,68 +170,74 @@ export function RouteSettingsForm({
               </RadioGroup>
             </Field>
 
-            <Field>
-              <FieldLabel htmlFor="route-max-attempts">Max attempts</FieldLabel>
-              <Input
-                id="route-max-attempts"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={10}
-                step={1}
-                required
-                value={values.maxAttempts}
-                onChange={(event) => update("maxAttempts", event.target.value)}
-              />
-              <FieldDescription>
-                How many targets to try per request before giving up (1–10).
-              </FieldDescription>
-            </Field>
+            <div data-tour="route-limits" className="grid gap-5">
+              <Field>
+                <FieldLabel htmlFor="route-max-attempts">
+                  Max attempts
+                </FieldLabel>
+                <Input
+                  id="route-max-attempts"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={10}
+                  step={1}
+                  required
+                  value={values.maxAttempts}
+                  onChange={(event) =>
+                    update("maxAttempts", event.target.value)
+                  }
+                />
+                <FieldDescription>
+                  How many targets to try per request before giving up (1–10).
+                </FieldDescription>
+              </Field>
 
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1">
-              <Field>
-                <FieldLabel htmlFor="route-timeout">
-                  Timeout (seconds)
-                </FieldLabel>
-                <Input
-                  id="route-timeout"
-                  type="number"
-                  inputMode="decimal"
-                  min={1}
-                  max={3600}
-                  step="any"
-                  required
-                  value={values.timeoutSeconds}
-                  onChange={(event) =>
-                    update("timeoutSeconds", event.target.value)
-                  }
-                />
-                <FieldDescription>
-                  Longest an upstream call may run before it&apos;s aborted.
-                </FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="route-first-token-timeout">
-                  First-token timeout (seconds)
-                </FieldLabel>
-                <Input
-                  id="route-first-token-timeout"
-                  type="number"
-                  inputMode="decimal"
-                  min={1}
-                  max={3600}
-                  step="any"
-                  required
-                  value={values.firstTokenTimeoutSeconds}
-                  onChange={(event) =>
-                    update("firstTokenTimeoutSeconds", event.target.value)
-                  }
-                />
-                <FieldDescription>
-                  How long to wait for a stream to start before failing over to
-                  the next target.
-                </FieldDescription>
-              </Field>
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1">
+                <Field>
+                  <FieldLabel htmlFor="route-timeout">
+                    Timeout (seconds)
+                  </FieldLabel>
+                  <Input
+                    id="route-timeout"
+                    type="number"
+                    inputMode="decimal"
+                    min={1}
+                    max={3600}
+                    step="any"
+                    required
+                    value={values.timeoutSeconds}
+                    onChange={(event) =>
+                      update("timeoutSeconds", event.target.value)
+                    }
+                  />
+                  <FieldDescription>
+                    Longest an upstream call may run before it&apos;s aborted.
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="route-first-token-timeout">
+                    First-token timeout (seconds)
+                  </FieldLabel>
+                  <Input
+                    id="route-first-token-timeout"
+                    type="number"
+                    inputMode="decimal"
+                    min={1}
+                    max={3600}
+                    step="any"
+                    required
+                    value={values.firstTokenTimeoutSeconds}
+                    onChange={(event) =>
+                      update("firstTokenTimeoutSeconds", event.target.value)
+                    }
+                  />
+                  <FieldDescription>
+                    How long to wait for a stream to start before failing over
+                    to the next target.
+                  </FieldDescription>
+                </Field>
+              </div>
             </div>
 
             <Field orientation="horizontal">

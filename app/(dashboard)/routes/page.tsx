@@ -5,6 +5,7 @@ import { ArrowRightIcon, ChevronRightIcon, RouteIcon } from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -92,13 +93,14 @@ export default async function RoutesPage() {
 
   return (
     <>
+      <PageTour id="routes" />
       <PageHeader
         title="Routes"
         description="Named aliases apps send as model, like smart or fast. Each route tries its models in order and fails over automatically."
         actions={routes.length > 0 && <NewRouteDialog />}
       />
       {routes.length === 0 ? (
-        <Empty className="border">
+        <Empty data-tour="routes-empty" className="border">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <RouteIcon />
@@ -116,7 +118,7 @@ export default async function RoutesPage() {
           </EmptyContent>
         </Empty>
       ) : (
-        <Card className="py-0">
+        <Card data-tour="routes-table" className="py-0">
           <CardContent className="px-0">
             <Table>
               <TableHeader>
@@ -131,9 +133,12 @@ export default async function RoutesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {routes.map((route) => (
+                {routes.map((route, index) => (
                   <TableRow key={route.id}>
-                    <TableCell className="pl-6">
+                    <TableCell
+                      data-tour={index === 0 ? "routes-name" : undefined}
+                      className="pl-6"
+                    >
                       <Link
                         href={`/routes/${route.id}`}
                         className="font-mono font-medium underline-offset-4 hover:underline"
@@ -147,13 +152,20 @@ export default async function RoutesPage() {
                     <TableCell>
                       <Badge variant="outline">{KIND_LABELS[route.kind]}</Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell
+                      data-tour={index === 0 ? "routes-strategy" : undefined}
+                      className="text-muted-foreground"
+                    >
                       {STRATEGY_LABELS[route.strategy]}
                     </TableCell>
-                    <TableCell>
+                    <TableCell
+                      data-tour={index === 0 ? "routes-targets" : undefined}
+                    >
                       <TargetChain slugs={route.chain} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell
+                      data-tour={index === 0 ? "routes-enabled" : undefined}
+                    >
                       <RouteEnabledSwitch
                         id={route.id}
                         name={route.name}

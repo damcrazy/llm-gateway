@@ -13,6 +13,7 @@ export function PageHeader({
 }) {
   return (
     <div
+      data-tour="page-header"
       className={cn(
         "flex flex-wrap items-end justify-between gap-4",
         className
@@ -25,7 +26,12 @@ export function PageHeader({
         )}
       </div>
       {actions && (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        <div
+          data-tour="page-actions"
+          className="flex flex-wrap items-center gap-2"
+        >
+          {actions}
+        </div>
       )}
     </div>
   )

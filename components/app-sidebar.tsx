@@ -194,12 +194,18 @@ export function AppSidebar({
 
       <SidebarContent>
         {nav.map((group) => (
-          <SidebarGroup key={group.label}>
+          <SidebarGroup
+            key={group.label}
+            data-tour={`nav-group-${group.label.toLowerCase()}`}
+          >
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
-                  <SidebarMenuItem key={item.href}>
+                  <SidebarMenuItem
+                    key={item.href}
+                    data-tour={`nav-${item.href === "/" ? "overview" : item.href.slice(1)}`}
+                  >
                     <SidebarMenuButton
                       asChild
                       isActive={isActive(pathname, item.href)}
@@ -220,7 +226,7 @@ export function AppSidebar({
 
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem>
+          <SidebarMenuItem data-tour="nav-account">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton

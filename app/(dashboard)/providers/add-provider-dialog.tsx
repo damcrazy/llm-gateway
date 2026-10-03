@@ -67,7 +67,7 @@ export function AddProviderDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={variant}>
+        <Button variant={variant} data-tour="providers-add">
           <PlusIcon />
           Add provider
         </Button>

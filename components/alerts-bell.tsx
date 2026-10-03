@@ -69,6 +69,7 @@ export function AlertsBell() {
           variant="ghost"
           size="icon-sm"
           className="relative"
+          data-tour="alerts-bell"
           aria-label={unread ? `Alerts, ${unread} unread` : "Alerts"}
         >
           <BellIcon />

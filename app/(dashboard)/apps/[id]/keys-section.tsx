@@ -54,21 +54,21 @@ export function KeysSection({
         </p>
         <CreateKeyDialog appId={appId} />
       </div>
-      <Card className="py-0">
-        <CardContent className="px-0">
-          {keys.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <KeyRoundIcon />
-                </EmptyMedia>
-                <EmptyTitle>No API keys</EmptyTitle>
-                <EmptyDescription>
-                  Create a key to start calling the gateway from this app.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
+      {keys.length === 0 ? (
+        <Empty className="min-h-80 border" data-tour="app-keys-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <KeyRoundIcon />
+            </EmptyMedia>
+            <EmptyTitle>No API keys</EmptyTitle>
+            <EmptyDescription>
+              Create a key to start calling the gateway from this app.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <Card className="py-0" data-tour="app-keys-table">
+          <CardContent className="px-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -77,7 +77,7 @@ export function KeysSection({
                   <TableHead>Created</TableHead>
                   <TableHead>Last used</TableHead>
                   <TableHead>Expires</TableHead>
-                  <TableHead>Limits</TableHead>
+                  <TableHead data-tour="app-keys-limits">Limits</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-48 pr-6" />
                 </TableRow>
@@ -118,7 +118,10 @@ export function KeysSection({
                       </TableCell>
                       <TableCell className="pr-6 text-right">
                         {status !== "revoked" && (
-                          <div className="flex justify-end gap-1">
+                          <div
+                            className="flex justify-end gap-1"
+                            data-tour="app-key-actions"
+                          >
                             <KeyLimitsDialog
                               appId={appId}
                               keyId={key.id}
@@ -138,9 +141,9 @@ export function KeysSection({
                 })}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

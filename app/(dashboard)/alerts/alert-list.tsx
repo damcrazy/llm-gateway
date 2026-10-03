@@ -56,6 +56,7 @@ export function MarkAllReadButton({ disabled }: { disabled: boolean }) {
   const [pending, startTransition] = useTransition()
   return (
     <Button
+      data-tour="alerts-mark-read"
       variant="outline"
       size="sm"
       disabled={disabled || pending}

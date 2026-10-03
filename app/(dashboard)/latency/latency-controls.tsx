@@ -59,7 +59,10 @@ export function LatencyControls({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div
+      data-tour="latency-controls"
+      className="flex flex-wrap items-center gap-2"
+    >
       {pending && <Spinner className="size-4" />}
       {apps.length > 1 && (
         <Select

@@ -4,8 +4,8 @@ import { CpuIcon, InfoIcon, ServerIcon } from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import { PageHeader } from "@/components/page-header"
+import { PageTour } from "@/components/tour/tour-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   Empty,
   EmptyContent,
@@ -27,6 +27,7 @@ export default async function ModelsPage() {
   if (!me.isAdmin) {
     return (
       <>
+        <PageTour id="models" />
         <PageHeader
           title="Models"
           description="The routes and models your API keys can call."
@@ -40,11 +41,16 @@ export default async function ModelsPage() {
 
   return (
     <>
+      <PageTour id="models" />
       <PageHeader
         title="Models"
         description="Every model across the shared providers. Clients can call any enabled model by its slug, or through a route."
         actions={
-          <Button variant="outline" asChild>
+          <Button
+            variant="outline"
+            asChild
+            data-tour={models.length > 0 ? "models-providers-link" : undefined}
+          >
             <Link href="/providers">
               <ServerIcon />
               Providers
@@ -53,7 +59,7 @@ export default async function ModelsPage() {
         }
       />
 
-      <Alert>
+      <Alert data-tour="models-capabilities">
         <InfoIcon />
         <AlertTitle>Capabilities and tags</AlertTitle>
         <AlertDescription>
@@ -67,30 +73,26 @@ export default async function ModelsPage() {
       </Alert>
 
       {models.length === 0 ? (
-        <Card>
-          <CardContent>
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <CpuIcon />
-                </EmptyMedia>
-                <EmptyTitle>No models yet</EmptyTitle>
-                <EmptyDescription>
-                  Models belong to a provider. Open a provider to discover its
-                  models or add one by id.
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                <Button asChild>
-                  <Link href="/providers">
-                    <ServerIcon />
-                    Go to providers
-                  </Link>
-                </Button>
-              </EmptyContent>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty className="border" data-tour="models-empty">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <CpuIcon />
+            </EmptyMedia>
+            <EmptyTitle>No models yet</EmptyTitle>
+            <EmptyDescription>
+              Models belong to a provider. Open a provider to discover its
+              models or add one by id.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button asChild>
+              <Link href="/providers">
+                <ServerIcon />
+                Go to providers
+              </Link>
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : (
         <ModelsExplorer
           models={models}

@@ -142,7 +142,7 @@ export function CreateKeyDialog({ appId }: { appId: string }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button>
+        <Button data-tour="app-create-key">
           <PlusIcon />
           Create key
         </Button>

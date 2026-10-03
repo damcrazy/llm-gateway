@@ -110,14 +110,14 @@ export function TracingForm({ initial }: { initial: TraceExportView }) {
 
   return (
     <form onSubmit={submit} className="grid gap-6">
-      <Card>
+      <Card data-tour="tracing-langfuse">
         <CardHeader>
           <CardTitle>Langfuse</CardTitle>
           <CardDescription>
             Each request becomes a trace with one generation: model, tokens,
             cost, timings, and first-token time.
           </CardDescription>
-          <CardAction>
+          <CardAction data-tour="tracing-langfuse-switch">
             <Switch
               checked={lfEnabled}
               onCheckedChange={setLfEnabled}
@@ -192,7 +192,7 @@ export function TracingForm({ initial }: { initial: TraceExportView }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-tour="tracing-otel">
         <CardHeader>
           <CardTitle>OpenTelemetry</CardTitle>
           <CardDescription>
@@ -261,6 +261,7 @@ export function TracingForm({ initial }: { initial: TraceExportView }) {
         </CardContent>
         <CardFooter className="justify-between gap-2 border-t">
           <Button
+            data-tour="tracing-test"
             type="button"
             variant="outline"
             disabled={testing || pending}
@@ -269,7 +270,7 @@ export function TracingForm({ initial }: { initial: TraceExportView }) {
             {testing ? <Spinner /> : <SendIcon />}
             Send test trace
           </Button>
-          <Button type="submit" disabled={pending}>
+          <Button data-tour="tracing-save" type="submit" disabled={pending}>
             {pending ? <Spinner /> : <SaveIcon />}
             Save
           </Button>

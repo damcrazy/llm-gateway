@@ -126,7 +126,7 @@ export function ModelLibrary({
   }, [buckets])
 
   return (
-    <Card>
+    <Card data-tour="app-library">
       <CardHeader>
         <CardTitle>Models you can use</CardTitle>
         <CardDescription>
@@ -172,7 +172,7 @@ export function ModelLibrary({
               <TableHead className="text-right">Context</TableHead>
               <TableHead className="text-right">$/1M in / out</TableHead>
               <TableHead className="text-right">This month</TableHead>
-              <TableHead>In buckets</TableHead>
+              <TableHead data-tour="app-library-buckets">In buckets</TableHead>
               <TableHead className="pr-6 text-right">
                 <span className="sr-only">Add</span>
               </TableHead>
