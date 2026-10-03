@@ -2,9 +2,13 @@
 
 export const KEY_PLACEHOLDER = "gw_live_…"
 
+export type SnippetMode = "full" | "stream"
+
 export interface SnippetBlock {
   title: string
   code: string
+  /** Shown only in this mode; omitted = both. */
+  mode?: SnippetMode
 }
 
 export interface SnippetTab {
@@ -19,9 +23,9 @@ export function buildSnippets({
   extraModels,
 }: {
   origin: string
-  /** Model or route the snippets call. */
+  /** Model, bucket or route the snippets call. */
   model: string
-  /** Other routes/models to list in configs that take a model list. */
+  /** Other names to list in configs that take a model list. */
   extraModels: string[]
 }): SnippetTab[] {
   const baseUrl = `${origin}/v1`
@@ -32,6 +36,39 @@ export function buildSnippets({
       .map((m) => [m, { name: m }])
   )
 
+  const openAIPythonClient = `from openai import OpenAI
+
+client = OpenAI(
+    base_url="${baseUrl}",
+    api_key="${key}",
+)`
+  const openAITsClient = `import OpenAI from "openai"
+
+const client = new OpenAI({
+  baseURL: "${baseUrl}",
+  apiKey: "${key}",
+})`
+  const langchainPythonClient = `from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    base_url="${baseUrl}",
+    api_key="${key}",
+    model="${model}",
+)`
+  const langchainJsClient = `import { ChatOpenAI } from "@langchain/openai"
+
+const llm = new ChatOpenAI({
+  model: "${model}",
+  apiKey: "${key}",
+  configuration: { baseURL: "${baseUrl}" },
+})`
+  const anthropicClient = `import anthropic
+
+client = anthropic.Anthropic(
+    base_url="${origin}",
+    api_key="${key}",
+)`
+
   return [
     {
       value: "openai-python",
@@ -39,18 +76,28 @@ export function buildSnippets({
       blocks: [
         {
           title: "pip install openai",
-          code: `from openai import OpenAI
-
-client = OpenAI(
-    base_url="${baseUrl}",
-    api_key="${key}",
-)
+          mode: "full",
+          code: `${openAIPythonClient}
 
 response = client.chat.completions.create(
     model="${model}",
     messages=[{"role": "user", "content": "Hello!"}],
 )
 print(response.choices[0].message.content)`,
+        },
+        {
+          title: "pip install openai · streaming",
+          mode: "stream",
+          code: `${openAIPythonClient}
+
+stream = client.chat.completions.create(
+    model="${model}",
+    messages=[{"role": "user", "content": "Hello!"}],
+    stream=True,
+)
+for chunk in stream:
+    if chunk.choices:
+        print(chunk.choices[0].delta.content or "", end="", flush=True)`,
         },
       ],
     },
@@ -60,18 +107,28 @@ print(response.choices[0].message.content)`,
       blocks: [
         {
           title: "npm install openai",
-          code: `import OpenAI from "openai"
-
-const client = new OpenAI({
-  baseURL: "${baseUrl}",
-  apiKey: "${key}",
-})
+          mode: "full",
+          code: `${openAITsClient}
 
 const completion = await client.chat.completions.create({
   model: "${model}",
   messages: [{ role: "user", content: "Hello!" }],
 })
 console.log(completion.choices[0].message.content)`,
+        },
+        {
+          title: "npm install openai · streaming",
+          mode: "stream",
+          code: `${openAITsClient}
+
+const stream = await client.chat.completions.create({
+  model: "${model}",
+  messages: [{ role: "user", content: "Hello!" }],
+  stream: true,
+})
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content ?? "")
+}`,
         },
       ],
     },
@@ -81,15 +138,18 @@ console.log(completion.choices[0].message.content)`,
       blocks: [
         {
           title: "pip install langchain-openai",
-          code: `from langchain_openai import ChatOpenAI
-
-llm = ChatOpenAI(
-    base_url="${baseUrl}",
-    api_key="${key}",
-    model="${model}",
-)
+          mode: "full",
+          code: `${langchainPythonClient}
 
 print(llm.invoke("Hello!").content)`,
+        },
+        {
+          title: "pip install langchain-openai · streaming",
+          mode: "stream",
+          code: `${langchainPythonClient}
+
+for chunk in llm.stream("Hello!"):
+    print(chunk.content, end="", flush=True)`,
         },
       ],
     },
@@ -99,16 +159,20 @@ print(llm.invoke("Hello!").content)`,
       blocks: [
         {
           title: "npm install @langchain/openai",
-          code: `import { ChatOpenAI } from "@langchain/openai"
-
-const llm = new ChatOpenAI({
-  model: "${model}",
-  apiKey: "${key}",
-  configuration: { baseURL: "${baseUrl}" },
-})
+          mode: "full",
+          code: `${langchainJsClient}
 
 const reply = await llm.invoke("Hello!")
 console.log(reply.content)`,
+        },
+        {
+          title: "npm install @langchain/openai · streaming",
+          mode: "stream",
+          code: `${langchainJsClient}
+
+for await (const chunk of await llm.stream("Hello!")) {
+  process.stdout.write(String(chunk.content))
+}`,
         },
       ],
     },
@@ -117,7 +181,7 @@ console.log(reply.content)`,
       label: "Anthropic-compatible",
       blocks: [
         {
-          title: "Claude Code (shell)",
+          title: "Claude Code (shell) · streams automatically",
           code: `export ANTHROPIC_BASE_URL="${origin}"
 export ANTHROPIC_AUTH_TOKEN="${key}"
 export ANTHROPIC_MODEL="${model}"
@@ -126,12 +190,8 @@ claude`,
         },
         {
           title: "Anthropic SDK (Python)",
-          code: `import anthropic
-
-client = anthropic.Anthropic(
-    base_url="${origin}",
-    api_key="${key}",
-)
+          mode: "full",
+          code: `${anthropicClient}
 
 message = client.messages.create(
     model="${model}",
@@ -140,6 +200,19 @@ message = client.messages.create(
 )
 print(message.content[0].text)`,
         },
+        {
+          title: "Anthropic SDK (Python) · streaming",
+          mode: "stream",
+          code: `${anthropicClient}
+
+with client.messages.stream(
+    model="${model}",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello!"}],
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)`,
+        },
       ],
     },
     {
@@ -147,7 +220,7 @@ print(message.content[0].text)`,
       label: "opencode",
       blocks: [
         {
-          title: "opencode.json",
+          title: "opencode.json · streams automatically",
           code: JSON.stringify(
             {
               $schema: "https://opencode.ai/config.json",
@@ -173,6 +246,7 @@ print(message.content[0].text)`,
       blocks: [
         {
           title: "Chat completion",
+          mode: "full",
           code: `curl ${baseUrl}/chat/completions \\
   -H "Authorization: Bearer ${key}" \\
   -H "Content-Type: application/json" \\
@@ -180,6 +254,25 @@ print(message.content[0].text)`,
     "model": "${model}",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'`,
+        },
+        {
+          title:
+            "Chat completion · streaming (-N prints events as they arrive)",
+          mode: "stream",
+          code: `curl -N ${baseUrl}/chat/completions \\
+  -H "Authorization: Bearer ${key}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${model}",
+    "stream": true,
+    "stream_options": {"include_usage": true},
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+
+# data: {"choices":[{"delta":{"content":"Hel"}}], …}
+# data: {"choices":[{"delta":{"content":"lo!"}}], …}
+# data: {"choices":[], "usage":{"prompt_tokens":9,"completion_tokens":3, …}}
+# data: [DONE]`,
         },
         {
           title: "List models",
@@ -196,8 +289,24 @@ export const ENDPOINTS = [
     method: "POST",
     path: "/v1/chat/completions",
     format: "OpenAI Chat Completions",
+    streaming: 'SSE with "stream": true',
   },
-  { method: "POST", path: "/v1/messages", format: "Anthropic Messages" },
-  { method: "POST", path: "/v1/embeddings", format: "OpenAI Embeddings" },
-  { method: "GET", path: "/v1/models", format: "OpenAI model list" },
+  {
+    method: "POST",
+    path: "/v1/messages",
+    format: "Anthropic Messages",
+    streaming: 'Anthropic events with "stream": true',
+  },
+  {
+    method: "POST",
+    path: "/v1/embeddings",
+    format: "OpenAI Embeddings",
+    streaming: null,
+  },
+  {
+    method: "GET",
+    path: "/v1/models",
+    format: "OpenAI model list",
+    streaming: null,
+  },
 ] as const

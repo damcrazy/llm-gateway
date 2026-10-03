@@ -1,11 +1,4 @@
 import { CopyButton } from "@/components/animate-ui/components/buttons/copy"
-import {
-  Tabs,
-  TabsContent,
-  TabsContents,
-  TabsList,
-  TabsTrigger,
-} from "@/components/animate-ui/components/radix/tabs"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -23,28 +16,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-import { buildSnippets, ENDPOINTS, KEY_PLACEHOLDER } from "./_snippets"
-
-function CodeBlock({ title, code }: { title: string; code: string }) {
-  return (
-    <div className="min-w-0 overflow-hidden rounded-lg border bg-muted/40">
-      <div className="flex items-center justify-between gap-2 border-b py-1 pr-1 pl-4">
-        <span className="truncate font-mono text-xs text-muted-foreground">
-          {title}
-        </span>
-        <CopyButton
-          content={code}
-          variant="ghost"
-          size="xs"
-          aria-label={`Copy ${title}`}
-        />
-      </div>
-      <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed">
-        <code>{code}</code>
-      </pre>
-    </div>
-  )
-}
+import { buildSnippets, ENDPOINTS } from "./_snippets"
+import { QuickStart } from "./quick-start"
 
 export function IntegrateSection({
   origin,
@@ -81,6 +54,7 @@ export function IntegrateSection({
                 <TableHead className="pl-6">Method</TableHead>
                 <TableHead>URL</TableHead>
                 <TableHead>Format</TableHead>
+                <TableHead>Streaming</TableHead>
                 <TableHead className="w-12 pr-6" />
               </TableRow>
             </TableHeader>
@@ -98,6 +72,15 @@ export function IntegrateSection({
                     <TableCell className="text-muted-foreground">
                       {endpoint.format}
                     </TableCell>
+                    <TableCell>
+                      {endpoint.streaming ? (
+                        <Badge variant="secondary" className="font-normal">
+                          {endpoint.streaming}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="pr-6 text-right">
                       <CopyButton
                         content={url}
@@ -114,44 +97,7 @@ export function IntegrateSection({
         </CardContent>
       </Card>
 
-      <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle>Quick start</CardTitle>
-          <CardDescription>
-            Replace <code className="font-mono">{KEY_PLACEHOLDER}</code> with a
-            key from the Keys tab. Snippets call{" "}
-            <code className="font-mono">{model}</code>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="min-w-0">
-          <Tabs defaultValue={snippets[0].value} className="min-w-0 gap-4">
-            <div className="-mx-1 overflow-x-auto px-1 pb-1">
-              <TabsList>
-                {snippets.map((tab) => (
-                  <TabsTrigger key={tab.value} value={tab.value}>
-                    {tab.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
-            <TabsContents className="-m-1 p-1">
-              {snippets.map((tab) => (
-                <TabsContent
-                  key={tab.value}
-                  value={tab.value}
-                  className="min-w-0"
-                >
-                  <div className="grid min-w-0 gap-4">
-                    {tab.blocks.map((block) => (
-                      <CodeBlock key={block.title} {...block} />
-                    ))}
-                  </div>
-                </TabsContent>
-              ))}
-            </TabsContents>
-          </Tabs>
-        </CardContent>
-      </Card>
+      <QuickStart snippets={snippets} model={model} />
     </div>
   )
 }
