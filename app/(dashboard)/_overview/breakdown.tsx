@@ -168,7 +168,10 @@ export function BreakdownCard({
   className?: string
 }) {
   return (
-    <Card data-tour="overview-breakdown" className={cn("min-w-0 pb-2", className)}>
+    <Card
+      data-tour="overview-breakdown"
+      className={cn("min-w-0 pb-2", className)}
+    >
       <Tabs defaultValue="models" className="gap-4">
         <CardHeader>
           <CardTitle>Breakdown</CardTitle>

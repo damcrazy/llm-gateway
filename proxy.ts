@@ -21,13 +21,17 @@ export async function proxy(request: NextRequest) {
 
   const supabaseUrl = readEnv(ENV_NAMES.supabaseUrl)
   const supabaseKey = readEnv(ENV_NAMES.supabasePublishableKey)
-  if (!supabaseUrl || !supabaseKey) {
-    const missing = [
-      !supabaseUrl && describeNames(ENV_NAMES.supabaseUrl),
-      !supabaseKey && describeNames(ENV_NAMES.supabasePublishableKey),
-    ].filter(Boolean)
+  const missing = [
+    ENV_NAMES.supabaseUrl,
+    ENV_NAMES.supabasePublishableKey,
+    ENV_NAMES.supabaseSecretKey,
+    ENV_NAMES.encryptionKey,
+  ]
+    .filter((names) => !readEnv(names))
+    .map(describeNames)
+  if (!supabaseUrl || !supabaseKey || missing.length > 0) {
     return new NextResponse(
-      `Gateway is not configured: missing ${missing.join(" and ")}. Set it in your environment and redeploy.`,
+      `Gateway is not configured: missing ${missing.join(", ")}. Set ${missing.length > 1 ? "them" : "it"} in your environment (see .env.example) and redeploy.`,
       { status: 500 }
     )
   }

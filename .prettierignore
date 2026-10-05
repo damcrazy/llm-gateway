@@ -5,3 +5,11 @@ node_modules/
 coverage/
 pnpm-lock.yaml
 .pnpm-store/
+
+# Vendored from the shadcn and Animate UI registries: kept exactly as the CLI
+# wrote them, so updates diff cleanly.
+components/ui/
+components/animate-ui/
+hooks/
+lib/compose-refs.ts
+lib/get-strict-context.tsx

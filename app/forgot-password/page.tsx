@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { connection } from "next/server"
 import { KeyRoundIcon } from "lucide-react"
 
 import {
@@ -16,7 +17,9 @@ import { ForgotPasswordForm } from "./forgot-password-form"
 
 export const metadata: Metadata = { title: "Forgot password" }
 
-export default function ForgotPasswordPage() {
+export default async function ForgotPasswordPage() {
+  // Settings are read per request, so builds (e.g. Docker) need no env.
+  await connection()
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">

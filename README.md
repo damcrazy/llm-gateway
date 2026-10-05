@@ -1,16 +1,23 @@
 # LLM Gateway
 
-A personal LLM gateway: one base URL and one API key per app, in front of every
-provider you use. The gateway handles credentials, routing, automatic failover,
-rate-limit cooldowns, token counting and cost; the dashboard handles providers,
-models, routes, app keys, logs and analytics.
+[![CI](https://github.com/damcrazy/llm-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/damcrazy/llm-gateway/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+A self-hosted LLM gateway: one base URL and one API key per app, in front of
+every provider you use. The gateway handles credentials, routing, automatic
+failover, rate-limit cooldowns, token counting and cost; the dashboard handles
+providers, models, buckets, app keys, logs and analytics, for you and anyone
+you let sign up.
+
+It's one Next.js app on top of Supabase (Postgres + Auth). Run it on Vercel
+and Supabase's free tiers, in Docker, or on your laptop.
 
 ```
 your apps (LangChain, LangGraph, opencode, Claude Code, OpenAI/Anthropic SDKs, curl)
         │  Authorization: Bearer gw_live_…      model: "smart"
         ▼
 Next.js (one app: dashboard + API)                           Supabase
-  /v1/chat/completions   OpenAI format        ─┐              admins · apps · api_keys (hashed)
+  /v1/chat/completions   OpenAI format        ─┐              members · apps · api_keys (hashed)
   /v1/responses          OpenAI Responses      │
   /v1/messages           Anthropic format      ├─ router ──►  providers · provider_secrets (AES-GCM)
   /v1/embeddings         OpenAI format         │  failover    models · routes · model_health
@@ -20,6 +27,122 @@ Next.js (one app: dashboard + API)                           Supabase
 OpenAI-compatible (OpenAI, Groq, OpenRouter, DeepSeek, Mistral, Together, Ollama, …)
 Azure OpenAI · Anthropic · AWS Bedrock · Google Vertex · Google AI Studio
 ```
+
+## Features
+
+- **One API for every provider.** OpenAI Chat Completions and Responses, Anthropic Messages, embeddings, images, speech, transcription and rerank. Clients speak either format to any model.
+- **Buckets and failover.** Name a list of models (`smart`, `fast`, `free`) and call it like a model. The gateway tries them in order, fastest first, cheapest first or spread evenly, skips models that are rate-limited, failing or over a free-tier quota, and can hedge slow requests.
+- **Keys, limits and budgets** per app and per key: requests and tokens per minute, monthly budgets, model allowlists.
+- **Response cache, structured-output checks and PII redaction**, per app.
+- **Logs, analytics, alerts and tracing**: costs per model and app, budget and failure alerts (with Slack/Discord webhooks), export to Langfuse or OpenTelemetry, and an audit log.
+- **Prompt library, Playground and Compare**: versioned prompt templates, and the same conversation sent to several models side by side.
+- **Multi-user.** Open sign-up, required two-factor authentication, roles, per-member model access and budgets. Members can bring their own providers and share them with others by invite.
+- **Guided tours** on every page, from the compass button.
+
+## Run it locally
+
+You need [Bun](https://bun.sh) 1.3+, Node.js 24, Docker, and the
+[Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started).
+
+```bash
+git clone https://github.com/damcrazy/llm-gateway.git
+cd llm-gateway
+bun install
+supabase start     # local Postgres, Auth and Mailpit in Docker; applies the migrations
+bun run setup      # writes .env.local, asks for your email
+bun dev
+```
+
+1. Sign up at http://localhost:3000/signup with the email you gave `bun run setup`.
+2. Confirm it from Mailpit at http://127.0.0.1:54324. Emails never leave your machine locally.
+3. Set up two-factor authentication with an authenticator app. You're now the superadmin.
+4. Add a provider on **Providers**. A local [Ollama](https://ollama.com) works as *OpenAI-compatible* with base URL `http://127.0.0.1:11434/v1`.
+5. Create an app on **Apps** and point your code at `http://localhost:3000/v1` with its key.
+
+For local Google sign-in, set `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` and `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET`, then turn on `[auth.external.google]` in `supabase/config.toml`.
+
+## Deploy your own
+
+### 1. Supabase
+
+1. Create a project at [supabase.com](https://supabase.com/dashboard). Note its **region**: the app should run next to it.
+2. Apply the schema from your clone of this repository:
+
+   ```bash
+   supabase login
+   supabase link --project-ref <your-project-ref>
+   supabase db push
+   ```
+
+   This creates every table, row-level security policy and scheduled cleanup job (`pg_cron`): request logs are kept for 30 days and payloads for 7.
+3. Configure **Authentication** in the Supabase dashboard:
+   - **Sign In / Providers → Email:** keep **Allow new users to sign up** and **Confirm email** on, and set the minimum password length to 12. Anyone can create an account; it becomes a member with free models only once its email is confirmed. **Confirm email must stay on**: without it, anyone could sign up with your `SUPERADMIN_EMAIL` address before you do and become the superadmin.
+   - **URL Configuration:** set **Site URL** to your deployment's URL, e.g. `https://gateway.example.com`, and add `https://gateway.example.com/**` under **Redirect URLs** (plus `http://localhost:3000/**` if you develop against this project). If the Site URL is left at `http://localhost:3000`, confirmation emails link to localhost.
+   - **Emails → Templates:** paste the files from `supabase/templates/`:
+     - **Confirm signup** → `confirmation.html`, and **Reset password** → `recovery.html`. Their links go to `/auth/confirm`, so they work when the email is opened on a different device.
+     - **Magic link** → `magic_link.html`. It carries the 6-digit code used to recover a lost authenticator.
+   - **Emails → SMTP Settings:** Supabase's built-in sender only delivers to your Supabase team's own addresses, a couple of emails an hour. Set up custom SMTP (Resend, Postmark, SES, …) before other people sign up.
+   - **Multi-Factor:** leave **TOTP** enabled (the default).
+   - **Google** (optional, **Sign In / Providers → Google**): create an OAuth client of type *Web application* in Google Cloud Console with `https://<project-ref>.supabase.co/auth/v1/callback` as an authorized redirect URI, then paste its client ID and secret. The "Continue with Google" button appears on its own once it's on.
+
+### 2. Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway&env=SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,SUPABASE_SECRET_KEY,GATEWAY_ENCRYPTION_KEY,SUPERADMIN_EMAIL&envDescription=Your%20Supabase%20project%27s%20URL%20and%20keys%2C%20an%20encryption%20key%20and%20your%20email.&envLink=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway%23configuration&project-name=llm-gateway&repository-name=llm-gateway)
+
+1. The button copies this repository to your GitHub account and asks for the [environment variables](#configuration):
+   - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SECRET_KEY`: Supabase → **Project Settings → API Keys**.
+   - `GATEWAY_ENCRYPTION_KEY`: run `bun run generate:key` (or `openssl rand -base64 32`). Save a copy in your password manager.
+   - `SUPERADMIN_EMAIL`: your email.
+
+   Or import your fork on [vercel.com/new](https://vercel.com/new) and add the same variables.
+2. **Pick the region next to your database.** Each dashboard page makes several database round trips, so this is the biggest latency win. `vercel.json` sets `"regions": ["sin1"]` (Singapore, for Supabase's `ap-southeast-1`); change it in your copy, e.g. `iad1` for `us-east-1`, `fra1` for `eu-central-1`, `lhr1` for `eu-west-2`, `bom1` for `ap-south-1`. See [Vercel's region list](https://vercel.com/docs/regions).
+3. Open the deployment, sign up with `SUPERADMIN_EMAIL`, confirm the email and set up two-factor authentication. You're the superadmin.
+
+Good to know on Vercel's Hobby plan:
+- Streams are capped at 300 s. On Pro, raise `maxDuration` in `app/v1/*/route.ts` (up to 800 s).
+- Request bodies are capped at 4.5 MB.
+- `vercel.json` schedules a daily `/api/health?deep=1` ping, which keeps a free-tier Supabase project from pausing.
+
+### Docker
+
+The same image runs on any container host (a VPS, Azure Container Apps, AWS ECS or App Runner, Fly.io, …), against a hosted Supabase project set up as in [step 1](#1-supabase):
+
+```bash
+cp .env.example .env    # fill it in
+docker compose up --build
+# or: docker build -t llm-gateway . && docker run --env-file .env -p 3000:3000 llm-gateway
+```
+
+Self-hosted, there's no function time limit and no 4.5 MB body cap. The image has a healthcheck on `/api/health`. Put it behind HTTPS and set `APP_URL` to its public URL.
+
+To develop against a local Supabase stack, use `bun dev` as in [Run it locally](#run-it-locally): the browser and the server must reach Supabase at the same URL, and `127.0.0.1` inside a container isn't your machine.
+
+## Configuration
+
+Everything is read at runtime (there are no `NEXT_PUBLIC_*` values), so one build or image works anywhere. See `.env.example`.
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `SUPABASE_URL` | Yes | Project URL. `NEXT_PUBLIC_SUPABASE_URL` works too. |
+| `SUPABASE_PUBLISHABLE_KEY` | Yes | Publishable key, or the legacy anon key. Supabase's `NEXT_PUBLIC_*` names work too. |
+| `SUPABASE_SECRET_KEY` | Yes | Secret key, or the legacy `service_role` key (`SUPABASE_SERVICE_ROLE_KEY`). Server only. |
+| `GATEWAY_ENCRYPTION_KEY` | Yes | 32 random bytes, base64. Encrypts provider credentials. If it's lost or changed, saved credentials must be re-entered. Use a different key per environment. |
+| `SUPERADMIN_EMAIL` | For setup | Your email. That account becomes the superadmin when it signs in with a confirmed email. Changing it later promotes the new address; the previous superadmin keeps the role. |
+| `APP_URL` | No | Public URL, used in code snippets and alert links. Not needed on Vercel or behind a proxy that sets `X-Forwarded-Host`. |
+
+The dashboard answers "Gateway is not configured" and names whatever is missing.
+
+## Updating
+
+In your clone, apply the new version's migrations **before** its code goes live (pushing to the branch Vercel deploys from deploys it straight away):
+
+```bash
+git pull https://github.com/damcrazy/llm-gateway.git main
+supabase db push
+git push
+```
+
+Migrations are written to apply safely to a database that has data in it.
 
 ## How requests are served
 
@@ -42,100 +165,6 @@ Azure OpenAI · Anthropic · AWS Bedrock · Google Vertex · Google AI Studio
   usage upstream and only forwards it if the client asked for it. When a provider
   reports nothing, tokens are estimated and flagged in the logs. Cost is calculated
   per model from prices you can edit.
-
-## Setup
-
-### 1. Supabase
-
-1. Create a project and link it: `supabase link --project-ref <ref>`.
-2. Apply the schema: `supabase db push`. This runs the migrations in `supabase/migrations/`, including the admin allowlist.
-   - **Log retention:** `pg_cron` jobs delete request logs after 30 days and payloads after 7 days.
-3. **Authentication → Sign In / Providers:** keep the **Email** provider on, **"Allow new users to sign up" on** and **"Confirm email" on**. Under **Email**, set the minimum password length to 12. Anyone can create an account; it becomes a normal member (free models only) once its email is confirmed.
-4. **Create the superadmin account:** sign up at `/signup` with the `SUPERADMIN_EMAIL` address. That email is always superadmin. Or use Authentication → Users → Add user with "Auto confirm" ticked.
-5. *Not needed any more:* the *Before User Created* hook (`public.hook_before_user_created`) now lets everyone through, so it's harmless if it's still configured.
-
-### 2. Sign-in, 2FA and email
-
-Anyone can **sign up** at `/signup` with Google or email and password, and becomes a normal member with free models only. One email is always one account:
-- Signing in with Google attaches to the existing account with that email.
-- Signing up again with a used email shows "This email already has an account".
-- A Google user who wants a password uses **Forgot password?** or **Set a password** on Account & security. Both put the password on the same account.
-
-People sign in with **Google** or **email and password**. Either way, **two-factor authentication is required for everyone**: the first sign-in goes straight to setting up an authenticator app (Google Authenticator, 1Password, Authy…). Until a code is verified, the dashboard redirects to 2FA and RLS returns no rows.
-
-- **Account & security** (account menu at the bottom of the sidebar): change password, add a backup authenticator, remove one (never the last), see whether Google is linked.
-- **Forgot password?** on the sign-in page emails a reset link. Afterwards every session is signed out, and 2FA is still required.
-- **Lost authenticator:** on the 2FA screen, "Email me a code" verifies the account's email, removes the old authenticators and starts setup again.
-  - It only works right after a password or Google sign-in.
-  - It's off for 7 days after an emailed password reset, so access to the inbox alone can't replace both factors.
-- **Members page:** the superadmin sees each person's 2FA status and can **Reset 2FA**, or **Create account** for someone listed without one.
-
-**Google** (Authentication → Sign In / Providers → Google):
-1. In Google Cloud Console, create an OAuth client of type *Web application*. Add `https://<project-ref>.supabase.co/auth/v1/callback` as an authorized redirect URI.
-2. Paste its client ID and secret into Supabase and enable the provider. The "Continue with Google" button appears on its own once it's on.
-3. A first Google sign-in creates the account, or links it to the existing account with the same email.
-
-**URLs** (Authentication → URL Configuration):
-- **Site URL:** your dashboard, e.g. `https://gateway.example.com`.
-- **Redirect URLs:** `https://gateway.example.com/**`, and `http://localhost:3000/**` if you develop against this project.
-
-**Email templates** (Authentication → Emails → Templates). Paste the files from `supabase/templates/`:
-- **Confirm signup** → `confirmation.html`.
-- **Reset password** → `recovery.html`.
-- Both links go to `/auth/confirm`, so they work when the email is opened on a different device.
-- **Magic link** → `magic_link.html`. It shows the 6-digit code used to recover a lost authenticator.
-
-**SMTP** (Authentication → Emails → SMTP Settings): Supabase's built-in sender only delivers to your Supabase team's own addresses, a couple of emails an hour. Set up custom SMTP (Resend, Postmark, SES…) before relying on resets or recovery codes.
-
-**2FA** (Authentication → Multi-Factor): leave **TOTP** enabled (the default).
-
-### 3. Environment variables
-
-Copy `.env.example`. Everything is read at runtime (there are no `NEXT_PUBLIC_*` values), so one build or image works anywhere.
-
-| Variable | Notes |
-| --- | --- |
-| `SUPABASE_URL` | Project URL |
-| `SUPABASE_PUBLISHABLE_KEY` | Publishable key (or the legacy anon key) |
-| `SUPABASE_SECRET_KEY` | Secret key (or the legacy service_role key). Server only. |
-| `GATEWAY_ENCRYPTION_KEY` | `openssl rand -base64 32`. Encrypts provider credentials. Back it up. |
-| `SUPERADMIN_EMAIL` | Defaults to `kalyanb2000@gmail.com` |
-| `APP_URL` | Public URL, used in code snippets (optional behind a proxy that sets `X-Forwarded-Host`) |
-
-### 4. Deploy
-
-**Vercel (Hobby is fine to start):**
-1. Import the repo and set the env vars.
-2. Run the functions in the **same region as your Supabase project**. It's the biggest latency win: each database query is a round trip, and a page makes several. `vercel.json` sets `"regions": ["sin1"]` (Singapore) to match this project's Supabase (`ap-southeast-1`); change it if your database lives elsewhere.
-3. Limits on Hobby:
-   - Streams are capped at 300s. Raise `maxDuration` in `app/v1/*/route.ts` on Pro (up to 800s).
-   - Request bodies are capped at 4.5 MB.
-4. `vercel.json` schedules a daily `/api/health?deep=1` ping. It keeps a free-tier Supabase project from pausing.
-
-**Docker (local, Azure Container Apps, AWS ECS/App Runner, …):**
-```bash
-cp .env.example .env    # fill it in
-docker compose up --build
-# or: docker build -t llm-gateway . && docker run --env-file .env -p 3000:3000 llm-gateway
-```
-Self-hosted, there's no function time limit and no 4.5 MB body cap. The image has a healthcheck on `/api/health`.
-
-## Local development
-
-```bash
-bun install
-supabase start          # local Postgres + Auth in Docker; applies migrations
-cp .env.example .env.local   # use the keys printed by `supabase start`
-bun dev
-```
-
-Sign up locally at http://localhost:3000/signup. The confirmation email lands in Mailpit.
-
-Emails (reset links, recovery codes) never leave your machine locally: open Mailpit at http://127.0.0.1:54324. For local Google sign-in, set `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` and `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET`, then turn on `[auth.external.google]` in `supabase/config.toml`.
-
-```bash
-bun run typecheck && bun run lint && bun run test
-```
 
 ## Using it from an app
 
@@ -265,6 +294,7 @@ Turn on **Check structured output** in an app's Settings to have the gateway che
 - Prompts and answers are included only for apps that log payloads.
 - Sent after the response, so it adds no latency. Keys and headers are stored encrypted.
 
+
 ## People and roles
 
 Anyone who signs up becomes a **Member** with free models only. On **Members** (superadmin only), you can:
@@ -275,13 +305,14 @@ Anyone who signs up becomes a **Member** with free models only. On **Members** (
 
 | Role | Can do |
 | --- | --- |
-| Superadmin | Everything, including adding/removing people. Set by `SUPERADMIN_EMAIL`. |
+| Superadmin | Everything, including adding/removing people. The `SUPERADMIN_EMAIL` account. |
 | Admin | Shared providers, models, routes, every app and log. Can't manage people. |
 | Member | Their own apps, API keys, usage, logs and **their own providers**. Sees only the shared routes and models they're allowed to call, plus their own. |
 
 ### Shared and private providers
 
 - **Shared providers** are added by admins. Every member can use their models, within the model access and budget you set for them.
+- **Hiding an admin's provider:** switch **Visible to members** off on **Providers**. It becomes the admin's own: only their apps use it, plus anyone they invite from its page. Switching it back on gives it to every member again and removes the invites.
 - **Private providers** are added by members on **Providers**, with their own API keys. Only that member's apps can use the models: other members can't see them, call them or put them in a bucket or route, and admins only see a read-only list. Their models aren't limited by the member's model access (it's their key), and their cost doesn't count toward the monthly budget you set. App budgets still count everything.
 - A member can connect up to 10 providers. Their slugs are prefixed with the member's name by default, since model names (`slug/model`) are shared across the gateway.
 - Removing a member deletes their providers too.
@@ -305,6 +336,22 @@ The **Playground** has a **Run as** picker. Running as an app behaves exactly li
 
 Members can only run as their own apps. Admins can also pick **No app** for unrestricted tests.
 
+### Sign-in and two-factor authentication
+
+Anyone can **sign up** at `/signup` with Google or email and password, and becomes a normal member with free models only. One email is always one account:
+- Signing in with Google attaches to the existing account with that email.
+- Signing up again with a used email shows "This email already has an account".
+- A Google user who wants a password uses **Forgot password?** or **Set a password** on Account & security. Both put the password on the same account.
+
+**Two-factor authentication is required for everyone**, with either sign-in method: the first sign-in goes straight to setting up an authenticator app (Google Authenticator, 1Password, Authy…). Until a code is verified, the dashboard redirects to 2FA and RLS returns no rows.
+
+- **Account & security** (account menu at the bottom of the sidebar): change password, add a backup authenticator, remove one (never the last), see whether Google is linked.
+- **Forgot password?** on the sign-in page emails a reset link. Afterwards every session is signed out, and 2FA is still required.
+- **Lost authenticator:** on the 2FA screen, "Email me a code" verifies the account's email, removes the old authenticators and starts setup again.
+  - It only works right after a password or Google sign-in.
+  - It's off for 7 days after an emailed password reset, so access to the inbox alone can't replace both factors.
+- **Members page:** the superadmin sees each person's 2FA status and can **Reset 2FA**, or **Create account** for someone listed without one.
+
 ## Security model
 
 - **Dashboard access:** Google or email and password. Sign-up is open, but an account only becomes a member once its email is confirmed, and new members start with free models only. Roles and access are checked on every dashboard request and server action, and by RLS on every table.
@@ -317,9 +364,10 @@ Members can only run as their own apps. Admins can also pick **No app** for unre
   - URLs are checked when saved.
   - Every connection is checked again after DNS resolution (`lib/net/public-fetch.ts`), so a hostname re-pointed at `127.0.0.1` or the cloud metadata address `169.254.169.254` later is refused.
   - Redirects are refused.
-  - Shared providers have no such limit, so a local Ollama still works.
+  - Admins' providers have no such limit, so a local Ollama still works.
 - **Private models are invisible to others** in the router, `/v1/models`, the dashboard and RLS (`can_see_provider`). Another member's model slug answers 404, as if it didn't exist.
 - **App API keys** are stored as SHA-256 hashes and shown once. Each app can have a model allowlist, a requests-per-minute limit, a monthly budget and payload logging (off by default).
+
 
 ## Project layout
 
@@ -344,3 +392,11 @@ supabase/migrations/      schema, RLS, hooks, rollups, retention jobs
   - `isCancelled()` ignores the `preventDefault()` that dnd-kit's KeyboardSensor always applies to the key that starts a drag, so keyboard drags aren't treated as cancelled.
   - the coordinate getter skips the target it's already over and uses rects re-measured after scrolling, as dnd-kit's own `sortableKeyboardCoordinates` does, so arrow keys keep working once the page scrolls.
 - Every file under `components/animate-ui` starts with `'use client'`. Some registry files ship without it. Server pages then render them on the server, and tabs hit hydration mismatches.
+
+## Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and conventions, and [SECURITY.md](SECURITY.md) to report a vulnerability privately.
+
+## License
+
+[MIT](LICENSE)

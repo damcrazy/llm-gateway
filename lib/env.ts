@@ -15,9 +15,8 @@ export const env = {
   supabasePublishableKey: () => required(ENV_NAMES.supabasePublishableKey),
   supabaseSecretKey: () => required(ENV_NAMES.supabaseSecretKey),
   encryptionKey: () => required(ENV_NAMES.encryptionKey),
+  /** Signing in with this (confirmed) email makes the account superadmin. */
   superadminEmail: () =>
-    (process.env.SUPERADMIN_EMAIL ?? "kalyanb2000@gmail.com")
-      .trim()
-      .toLowerCase(),
+    process.env.SUPERADMIN_EMAIL?.trim().toLowerCase() || undefined,
   appUrl: () => process.env.APP_URL?.trim().replace(/\/+$/, "") || undefined,
 }

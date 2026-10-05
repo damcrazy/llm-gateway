@@ -34,10 +34,8 @@ create table public.admins (
   created_at timestamptz not null default now()
 );
 
-insert into public.admins (email, role, added_by) values
-  ('kalyanb2000@gmail.com', 'superadmin', 'migration'),
-  ('bkalyan.eth@gmail.com', 'admin', 'migration')
-on conflict (email) do nothing;
+-- No one is seeded here: the app makes the SUPERADMIN_EMAIL account the
+-- superadmin on its first sign-in (lib/auth.ts).
 
 create or replace function public.protect_superadmin()
 returns trigger

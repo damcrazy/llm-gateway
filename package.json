@@ -1,17 +1,25 @@
 {
-  "name": "gateway",
+  "name": "llm-gateway",
+  "description": "Self-hosted LLM gateway: one OpenAI- and Anthropic-compatible API with failover, buckets, budgets and a dashboard, on Next.js and Supabase.",
   "version": "0.0.1",
   "type": "module",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/damcrazy/llm-gateway.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "test": "bun test --conditions react-server tests",
-    "generate:key": "node scripts/generate-encryption-key.mjs"
+    "generate:key": "node scripts/generate-encryption-key.mjs",
+    "setup": "node scripts/setup-local.mjs"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^5.0.103",

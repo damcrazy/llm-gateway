@@ -30,6 +30,11 @@ pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# your editor and agent settings (.mcp.example.json is the template)
+.mcp.json
+.claude/settings.local.json
 
 # vercel
 .vercel
@@ -37,5 +42,3 @@ pnpm-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-!.env.example

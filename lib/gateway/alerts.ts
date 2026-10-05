@@ -102,7 +102,7 @@ export function forgetAlertSettings(email: string) {
 
 function dashboardUrl(path: string): string | null {
   const base =
-    process.env.APP_URL ??
+    env.appUrl() ??
     (process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
       : null)
@@ -321,13 +321,8 @@ async function adminEmails(): Promise<string[]> {
   const { data } = await supabaseAdmin()
     .from("members")
     .select("email")
-    .eq("role", "admin")
-  const emails = [
-    ...new Set([
-      env.superadminEmail(),
-      ...((data ?? []) as { email: string }[]).map((row) => row.email),
-    ]),
-  ]
+    .in("role", ["superadmin", "admin"])
+  const emails = ((data ?? []) as { email: string }[]).map((row) => row.email)
   adminCache = { at: Date.now(), emails }
   return emails
 }

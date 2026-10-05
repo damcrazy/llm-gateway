@@ -4,6 +4,7 @@ import { cache } from "react"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
+import { audit } from "@/lib/audit"
 import type { MemberRole, MemberRow, ModelAccess } from "@/lib/db/types"
 import { env } from "@/lib/env"
 import { supabaseAdmin } from "@/lib/supabase/admin"
@@ -69,6 +70,47 @@ export async function userHasPassword(userId: string): Promise<boolean> {
 }
 
 /**
+ * SUPERADMIN_EMAIL's first sign-in on a new install: store the superadmin
+ * role in the database, where row-level security reads it. Only for a
+ * confirmed address. This relies on "Confirm email" being on in Supabase
+ * Auth: with it off, every address counts as confirmed at sign-up, so
+ * whoever signed up with this email first would get the role.
+ */
+async function promoteSuperadmin(
+  userId: string,
+  email: string
+): Promise<MemberRow | null> {
+  const db = supabaseAdmin()
+  const { data: user } = await db.auth.admin.getUserById(userId)
+  if (!user.user?.email_confirmed_at) return null
+
+  const { data, error } = await db
+    .from("members")
+    .upsert(
+      {
+        email,
+        role: "superadmin",
+        model_access: "all",
+        monthly_budget_usd: null,
+        added_by: "SUPERADMIN_EMAIL",
+      },
+      { onConflict: "email" }
+    )
+    .select("*")
+    .single()
+  if (error) {
+    console.error("[auth] could not make the superadmin:", error.message)
+    return null
+  }
+  await audit(email, "member.superadmin", `${email} became the superadmin`, {
+    type: "member",
+    id: email,
+    name: email,
+  })
+  return data as MemberRow
+}
+
+/**
  * The signed-in person and how far they are through sign-in. Membership is
  * checked on every request, so removing someone takes effect immediately.
  */
@@ -85,11 +127,13 @@ export const getSessionState = cache(async (): Promise<SessionState> => {
     .select("*")
     .eq("email", email)
     .maybeSingle()
-  if (!row) return { status: "not_member" }
-  const memberRow = row as MemberRow
+  let memberRow = row as MemberRow | null
+  if (email === env.superadminEmail() && memberRow?.role !== "superadmin")
+    memberRow =
+      (await promoteSuperadmin(String(claims.sub ?? ""), email)) ?? memberRow
+  if (!memberRow) return { status: "not_member" }
 
-  const role: MemberRole =
-    email === env.superadminEmail() ? "superadmin" : memberRow.role
+  const role: MemberRole = memberRow.role
   const metadata = (claims.user_metadata ?? {}) as Record<string, unknown>
   const member: SessionMember = {
     id: String(claims.sub ?? ""),

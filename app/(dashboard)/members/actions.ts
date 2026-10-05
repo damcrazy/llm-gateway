@@ -20,6 +20,17 @@ import type { MemberAccessInput } from "./shared"
 
 const emailSchema = z.email().transform((value) => value.trim().toLowerCase())
 
+/** Superadmins can't be changed or removed here (the database refuses too). */
+async function isSuperadmin(email: string): Promise<boolean> {
+  if (email === env.superadminEmail()) return true
+  const { data } = await supabaseAdmin()
+    .from("members")
+    .select("role")
+    .eq("email", email)
+    .maybeSingle()
+  return data?.role === "superadmin"
+}
+
 const accessSchema = z
   .object({
     role: z.enum(["member", "admin"]),
@@ -115,7 +126,7 @@ export async function updateMember(
 ): Promise<ActionResult> {
   const me = await requireSuperadmin()
   const target = email.toLowerCase()
-  if (target === env.superadminEmail()) {
+  if (await isSuperadmin(target)) {
     return { ok: false, error: "The superadmin always has full access" }
   }
   const parsedAccess = accessSchema.safeParse(access)
@@ -175,7 +186,7 @@ export async function resetMemberPassword(
 export async function removeMember(email: string): Promise<ActionResult> {
   const me = await requireSuperadmin()
   const target = email.toLowerCase()
-  if (target === env.superadminEmail()) {
+  if (await isSuperadmin(target)) {
     return { ok: false, error: "The superadmin cannot be removed" }
   }
 
