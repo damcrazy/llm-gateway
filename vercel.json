@@ -1,8 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": [
-    "sin1"
-  ],
+  "buildCommand": "node scripts/migrate.mjs && next build",
   "crons": [
     {
       "path": "/api/health?deep=1",

@@ -12,6 +12,18 @@ you let sign up.
 It's one Next.js app on top of Supabase (Postgres + Auth). Run it on Vercel
 and Supabase's free tiers, in Docker, or on your laptop.
 
+<p>
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway&project-name=llm-gateway&repository-name=llm-gateway&env=GATEWAY_ENCRYPTION_KEY%2CSUPERADMIN_EMAIL&envDescription=An%20encryption%20key%20for%20provider%20credentials%20%28run%3A%20openssl%20rand%20-base64%2032%29%20and%20your%20email%2C%20which%20becomes%20the%20superadmin.&envLink=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway%23one-click-vercel--supabase&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%7D%5D"><img src="https://vercel.com/button" alt="Deploy with Vercel" height="32"></a>
+  &nbsp;
+  <a href="https://supabase.com/dashboard/new"><img src="https://img.shields.io/badge/Create_a_Supabase_project-1C1C1C?style=for-the-badge&logo=supabase&logoColor=3ECF8E" alt="Create a Supabase project" height="32"></a>
+</p>
+
+**Deploy with Vercel** sets up both halves in one go: it creates a Supabase
+project for you and builds the database on the first deploy ([details](#one-click-vercel--supabase)).
+Rather keep the database in your own Supabase account, or host the app
+somewhere else? Start with **Create a Supabase project** and follow
+[Your own Supabase project](#your-own-supabase-project).
+
 ```
 your apps (LangChain, LangGraph, opencode, Claude Code, OpenAI/Anthropic SDKs, curl)
         │  Authorization: Bearer gw_live_…      model: "smart"
@@ -41,15 +53,14 @@ Azure OpenAI · Anthropic · AWS Bedrock · Google Vertex · Google AI Studio
 
 ## Run it locally
 
-You need [Bun](https://bun.sh) 1.3+, Node.js 24, Docker, and the
-[Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started).
+You need [Bun](https://bun.sh) 1.3+, Node.js 24 and Docker. The Supabase CLI comes with `bun install`.
 
 ```bash
 git clone https://github.com/damcrazy/llm-gateway.git
 cd llm-gateway
 bun install
-supabase start     # local Postgres, Auth and Mailpit in Docker; applies the migrations
-bun run setup      # writes .env.local, asks for your email
+bunx supabase start   # local Postgres, Auth and Mailpit in Docker; applies the migrations
+bun run setup         # writes .env.local, asks for your email
 bun dev
 ```
 
@@ -63,49 +74,63 @@ For local Google sign-in, set `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` and `SUP
 
 ## Deploy your own
 
-### 1. Supabase
+### One click: Vercel + Supabase
 
-1. Create a project at [supabase.com](https://supabase.com/dashboard). Note its **region**: the app should run next to it.
-2. Apply the schema from your clone of this repository:
+<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway&project-name=llm-gateway&repository-name=llm-gateway&env=GATEWAY_ENCRYPTION_KEY%2CSUPERADMIN_EMAIL&envDescription=An%20encryption%20key%20for%20provider%20credentials%20%28run%3A%20openssl%20rand%20-base64%2032%29%20and%20your%20email%2C%20which%20becomes%20the%20superadmin.&envLink=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway%23one-click-vercel--supabase&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%7D%5D"><img src="https://vercel.com/button" alt="Deploy with Vercel" height="32"></a>
+
+1. The button copies this repository to your GitHub account and adds **Supabase** from the Vercel Marketplace. That creates a new Supabase project (pick the region closest to you) and gives the app its URL, keys and database connection.
+2. Vercel asks for two values:
+   - `GATEWAY_ENCRYPTION_KEY`: run `openssl rand -base64 32`. Save a copy in your password manager: without it, saved provider keys can't be decrypted.
+   - `SUPERADMIN_EMAIL`: your email.
+3. Deploy. The build creates the database schema first (`scripts/migrate.mjs` runs `supabase db push` on production builds), then builds the app.
+4. In the Supabase dashboard (Vercel links to it from the project's **Storage** tab), go through the [Supabase Auth settings](#supabase-auth-settings). Do the **URL Configuration** before you sign up, or the confirmation email links to localhost.
+5. Set the [function region](#vercel-notes) to match your Supabase region.
+6. Open your deployment, sign up with `SUPERADMIN_EMAIL`, confirm the email and set up two-factor authentication. You're the superadmin.
+
+A Supabase project created this way lives in a Supabase organization that Vercel manages, and Vercel bills it. To keep it in your own Supabase account, use your own project instead.
+
+### Your own Supabase project
+
+<a href="https://supabase.com/dashboard/new"><img src="https://img.shields.io/badge/Create_a_Supabase_project-1C1C1C?style=for-the-badge&logo=supabase&logoColor=3ECF8E" alt="Create a Supabase project" height="32"></a>
+
+1. Create a project at [supabase.com](https://supabase.com/dashboard/new). Note its **region**: the app should run next to it.
+2. Apply the schema from your clone of this repository (after `bun install`):
 
    ```bash
-   supabase login
-   supabase link --project-ref <your-project-ref>
-   supabase db push
+   bunx supabase login
+   bunx supabase link --project-ref <your-project-ref>
+   bunx supabase db push
    ```
 
    This creates every table, row-level security policy and scheduled cleanup job (`pg_cron`): request logs are kept for 30 days and payloads for 7.
-3. Configure **Authentication** in the Supabase dashboard:
-   - **Sign In / Providers → Email:** keep **Allow new users to sign up** and **Confirm email** on, and set the minimum password length to 12. Anyone can create an account; it becomes a member with free models only once its email is confirmed. **Confirm email must stay on**: without it, anyone could sign up with your `SUPERADMIN_EMAIL` address before you do and become the superadmin.
-   - **URL Configuration:** set **Site URL** to your deployment's URL, e.g. `https://gateway.example.com`, and add `https://gateway.example.com/**` under **Redirect URLs** (plus `http://localhost:3000/**` if you develop against this project). If the Site URL is left at `http://localhost:3000`, confirmation emails link to localhost.
-   - **Emails → Templates:** paste the files from `supabase/templates/`:
-     - **Confirm signup** → `confirmation.html`, and **Reset password** → `recovery.html`. Their links go to `/auth/confirm`, so they work when the email is opened on a different device.
-     - **Magic link** → `magic_link.html`. It carries the 6-digit code used to recover a lost authenticator.
-   - **Emails → SMTP Settings:** Supabase's built-in sender only delivers to your Supabase team's own addresses, a couple of emails an hour. Set up custom SMTP (Resend, Postmark, SES, …) before other people sign up.
-   - **Multi-Factor:** leave **TOTP** enabled (the default).
-   - **Google** (optional, **Sign In / Providers → Google**): create an OAuth client of type *Web application* in Google Cloud Console with `https://<project-ref>.supabase.co/auth/v1/callback` as an authorized redirect URI, then paste its client ID and secret. The "Continue with Google" button appears on its own once it's on.
+3. Go through the [Supabase Auth settings](#supabase-auth-settings).
+4. Deploy the app:
+   - **Vercel:** <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway&project-name=llm-gateway&repository-name=llm-gateway&env=SUPABASE_URL%2CSUPABASE_PUBLISHABLE_KEY%2CSUPABASE_SECRET_KEY%2CGATEWAY_ENCRYPTION_KEY%2CSUPERADMIN_EMAIL&envDescription=Your%20Supabase%20project%27s%20URL%20and%20keys%20%28Project%20Settings%20%3E%20API%20Keys%29%2C%20an%20encryption%20key%20%28run%3A%20openssl%20rand%20-base64%2032%29%20and%20your%20email%2C%20which%20becomes%20the%20superadmin.&envLink=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway%23your-own-supabase-project"><img src="https://vercel.com/button" alt="Deploy with Vercel, using your own Supabase project" height="24" align="center"></a> asks for your project's `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SECRET_KEY` (Supabase → **Project Settings → API Keys**), plus `GATEWAY_ENCRYPTION_KEY` (`openssl rand -base64 32`) and `SUPERADMIN_EMAIL`. Or import your fork on [vercel.com/new](https://vercel.com/new) and add the same variables. See the [Vercel notes](#vercel-notes).
+   - **Anywhere else:** use [Docker](#docker).
+5. Open your deployment, sign up with `SUPERADMIN_EMAIL`, confirm the email and set up two-factor authentication. You're the superadmin.
 
-### 2. Vercel
+### Supabase Auth settings
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway&env=SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,SUPABASE_SECRET_KEY,GATEWAY_ENCRYPTION_KEY,SUPERADMIN_EMAIL&envDescription=Your%20Supabase%20project%27s%20URL%20and%20keys%2C%20an%20encryption%20key%20and%20your%20email.&envLink=https%3A%2F%2Fgithub.com%2Fdamcrazy%2Fllm-gateway%23configuration&project-name=llm-gateway&repository-name=llm-gateway)
+In the Supabase dashboard, under **Authentication**:
 
-1. The button copies this repository to your GitHub account and asks for the [environment variables](#configuration):
-   - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SECRET_KEY`: Supabase → **Project Settings → API Keys**.
-   - `GATEWAY_ENCRYPTION_KEY`: run `bun run generate:key` (or `openssl rand -base64 32`). Save a copy in your password manager.
-   - `SUPERADMIN_EMAIL`: your email.
+- **URL Configuration:** set **Site URL** to your deployment's URL, e.g. `https://gateway.example.com`, and add `https://gateway.example.com/**` under **Redirect URLs** (plus `http://localhost:3000/**` if you develop against this project). If the Site URL is left at `http://localhost:3000`, confirmation emails link to localhost.
+- **Sign In / Providers → Email:** keep **Allow new users to sign up** and **Confirm email** on, and set the minimum password length to 12. Anyone can create an account; it becomes a member with free models only once its email is confirmed. **Confirm email must stay on**: without it, anyone could sign up with your `SUPERADMIN_EMAIL` address before you do and become the superadmin.
+- **Emails → Templates:** paste the files from `supabase/templates/`:
+  - **Confirm signup** → `confirmation.html`, and **Reset password** → `recovery.html`. Their links go to `/auth/confirm`, so they work when the email is opened on a different device.
+  - **Magic link** → `magic_link.html`. It carries the 6-digit code used to recover a lost authenticator.
+- **Emails → SMTP Settings:** Supabase's built-in sender only delivers to your Supabase team's own addresses, a couple of emails an hour. Set up custom SMTP (Resend, Postmark, SES, …) before other people sign up.
+- **Multi-Factor:** leave **TOTP** enabled (the default).
+- **Google** (optional, **Sign In / Providers → Google**): create an OAuth client of type *Web application* in Google Cloud Console with `https://<project-ref>.supabase.co/auth/v1/callback` as an authorized redirect URI, then paste its client ID and secret. The "Continue with Google" button appears on its own once it's on.
 
-   Or import your fork on [vercel.com/new](https://vercel.com/new) and add the same variables.
-2. **Pick the region next to your database.** Each dashboard page makes several database round trips, so this is the biggest latency win. `vercel.json` sets `"regions": ["sin1"]` (Singapore, for Supabase's `ap-southeast-1`); change it in your copy, e.g. `iad1` for `us-east-1`, `fra1` for `eu-central-1`, `lhr1` for `eu-west-2`, `bom1` for `ap-south-1`. See [Vercel's region list](https://vercel.com/docs/regions).
-3. Open the deployment, sign up with `SUPERADMIN_EMAIL`, confirm the email and set up two-factor authentication. You're the superadmin.
+### Vercel notes
 
-Good to know on Vercel's Hobby plan:
-- Streams are capped at 300 s. On Pro, raise `maxDuration` in `app/v1/*/route.ts` (up to 800 s).
-- Request bodies are capped at 4.5 MB.
+- **Function region.** Run the app next to its database: each dashboard page makes several database round trips, so this is the biggest latency win. Vercel uses Washington, D.C. (`iad1`, next to Supabase's `us-east-1`) unless you pick another under **Settings → Functions → Function Region**, e.g. Frankfurt for `eu-central-1` or Singapore for `ap-southeast-1`. It applies from the next deployment. See [Vercel's region list](https://vercel.com/docs/regions).
+- **Hobby plan limits:** streams are capped at 300 s (on Pro, raise `maxDuration` in `app/v1/*/route.ts`, up to 800 s), and request bodies at 4.5 MB.
 - `vercel.json` schedules a daily `/api/health?deep=1` ping, which keeps a free-tier Supabase project from pausing.
 
 ### Docker
 
-The same image runs on any container host (a VPS, Azure Container Apps, AWS ECS or App Runner, Fly.io, …), against a hosted Supabase project set up as in [step 1](#1-supabase):
+The same image runs on any container host (a VPS, Azure Container Apps, AWS ECS or App Runner, Fly.io, …), against [your own Supabase project](#your-own-supabase-project):
 
 ```bash
 cp .env.example .env    # fill it in
@@ -119,7 +144,7 @@ To develop against a local Supabase stack, use `bun dev` as in [Run it locally](
 
 ## Configuration
 
-Everything is read at runtime (there are no `NEXT_PUBLIC_*` values), so one build or image works anywhere. See `.env.example`.
+Everything is read at runtime (there are no `NEXT_PUBLIC_*` values), so one build or image works anywhere. See `.env.example`. With the one-click deploy, the Supabase integration sets the `SUPABASE_*` and `POSTGRES_*` values for you.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
@@ -129,20 +154,21 @@ Everything is read at runtime (there are no `NEXT_PUBLIC_*` values), so one buil
 | `GATEWAY_ENCRYPTION_KEY` | Yes | 32 random bytes, base64. Encrypts provider credentials. If it's lost or changed, saved credentials must be re-entered. Use a different key per environment. |
 | `SUPERADMIN_EMAIL` | For setup | Your email. That account becomes the superadmin when it signs in with a confirmed email. Changing it later promotes the new address; the previous superadmin keeps the role. |
 | `APP_URL` | No | Public URL, used in code snippets and alert links. Not needed on Vercel or behind a proxy that sets `X-Forwarded-Host`. |
+| `POSTGRES_URL_NON_POOLING`, `POSTGRES_URL` | No | Vercel builds only: a database connection lets production builds apply new migrations. The Supabase integration sets them; with your own project you can add your session pooler's connection string (Supabase → **Connect**) as `POSTGRES_URL`. Preview builds never migrate. |
 
 The dashboard answers "Gateway is not configured" and names whatever is missing.
 
 ## Updating
 
-In your clone, apply the new version's migrations **before** its code goes live (pushing to the branch Vercel deploys from deploys it straight away):
+Get the new version into your copy of the repository, apply its migrations, then deploy:
 
 ```bash
 git pull https://github.com/damcrazy/llm-gateway.git main
-supabase db push
-git push
+bunx supabase db push   # skip this if your Vercel builds have POSTGRES_URL (one-click deploys do)
+git push                # Vercel redeploys
 ```
 
-Migrations are written to apply safely to a database that has data in it.
+Builds with a database connection apply the migrations before the new code goes live; otherwise run `db push` first, as above. Migrations are written to apply safely to a database that has data in it.
 
 ## How requests are served
 

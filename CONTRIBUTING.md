@@ -7,13 +7,13 @@ approach before you spend time on it. Security problems go through
 
 ## Setup
 
-You need [Bun](https://bun.sh) 1.3+, Node.js 24, Docker and the
-[Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started).
+You need [Bun](https://bun.sh) 1.3+, Node.js 24 and Docker. The Supabase CLI
+is a dev dependency: run it with `bunx supabase`.
 
 ```bash
 bun install
-supabase start      # local Postgres, Auth and Mailpit in Docker; applies the migrations
-bun run setup       # writes .env.local from `supabase status`
+bunx supabase start   # local Postgres, Auth and Mailpit in Docker; applies the migrations
+bun run setup         # writes .env.local from `supabase status`
 bun dev
 ```
 
@@ -57,14 +57,16 @@ if you add one, list it there too.
 
 **Database changes.**
 
-- Create a new migration with `supabase migration new <name>`. Never edit one
+- Create a new migration with `bunx supabase migration new <name>`. Never edit one
   that's already been released: deployed databases won't run it again.
 - Every table has row-level security enabled. Tables only the server uses
   (secrets, counters, invites) get no policies at all, so only the service
   role can reach them.
 - Write changes forward-only and safe to apply to a database with data in it.
+  Vercel production builds apply them automatically (`scripts/migrate.mjs`), so
+  a migration that fails stops the deployment.
 - Update the hand-written row types in `lib/db/types.ts`.
-- `supabase db reset` re-applies every migration to your local database from
+- `bunx supabase db reset` re-applies every migration to your local database from
   scratch, which is a good test before you push.
 
 **Security.** Provider credentials stay encrypted (`lib/crypto.ts`) and never

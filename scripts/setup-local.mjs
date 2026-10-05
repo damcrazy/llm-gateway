@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Writes .env.local for `bun dev` against the local Supabase stack: its URL
 // and keys (from `supabase status`), an encryption key, and the superadmin
-// email. Run `supabase start` first.
+// email. Run `bunx supabase start` first.
 //
 //   bun run setup                            # asks for the superadmin email
 //   bun run setup --email you@example.com
@@ -14,6 +14,7 @@ import { execFileSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { createInterface } from "node:readline/promises"
+import { fileURLToPath } from "node:url"
 
 const TARGET = ".env.local"
 const args = process.argv.slice(2)
@@ -43,17 +44,23 @@ if (existing && !force)
     `${TARGET} already exists. Run with --force to rewrite it (its encryption key is kept).`
   )
 
+// The project's own Supabase CLI (a dev dependency), else one on the PATH.
+const localCli = fileURLToPath(
+  new URL("../node_modules/.bin/supabase", import.meta.url)
+)
+const cli = existsSync(localCli) ? localCli : "supabase"
+
 let status
 try {
-  status = execFileSync("supabase", ["status", "-o", "env"], {
+  status = execFileSync(cli, ["status", "-o", "env"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   })
 } catch (error) {
   fail(
     error.code === "ENOENT"
-      ? "The Supabase CLI isn't installed: https://supabase.com/docs/guides/local-development/cli/getting-started"
-      : "Couldn't read the local Supabase stack. Start it with `supabase start` (Docker must be running)."
+      ? "The Supabase CLI isn't installed. Run `bun install` first."
+      : "Couldn't read the local Supabase stack. Start it with `bunx supabase start` (Docker must be running)."
   )
 }
 const local = parseEnv(status)
