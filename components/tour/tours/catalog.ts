@@ -152,6 +152,12 @@ const providers: TourDefinition = {
       body: "Turning a provider off takes all its models out of service at once: routes skip them and calls by slug fail. Its key, settings and models are kept, so you can turn it back on at any time.",
     },
     {
+      target: "providers-col-visible",
+      title: "Visible to members",
+      side: "bottom",
+      body: "On: every member can use this provider, within the model access you give them. Off: it's yours alone, members' apps stop using it, and you can invite specific people from its page. Its settings and models are kept either way.",
+    },
+    {
       target: "providers-members-own",
       title: "Members' own providers",
       side: "top",

@@ -11,6 +11,7 @@ import type {
   RouteTargetRow,
 } from "@/lib/db/types"
 import type { ProviderType } from "@/lib/providers/catalog"
+import { env } from "@/lib/env"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
 // In-memory snapshot of providers, models and routes. Each gateway instance
@@ -28,6 +29,11 @@ export interface ProviderRuntime {
   enabled: boolean
   /** null = shared provider; otherwise only this member's apps may use it. */
   ownerEmail: string | null
+  /**
+   * Owned by someone who isn't an admin: calls may only reach public https
+   * addresses (admins' providers, shared or private, may use local ones).
+   */
+  publicOnly: boolean
   quotaRpm: number | null
   quotaRpd: number | null
   credentials: ProviderCredentials
@@ -101,6 +107,18 @@ export function invalidateGatewayConfig(): void {
   snapshot = undefined
 }
 
+/** Whether a provider row's owner is someone other than an admin. */
+export function ownerIsRestricted(
+  row: Pick<ProviderRow, "owner_email"> & {
+    members?: { role?: string } | null
+  }
+): boolean {
+  if (!row.owner_email) return false
+  if (row.owner_email === env.superadminEmail()) return false
+  const role = row.members?.role
+  return role !== "admin" && role !== "superadmin"
+}
+
 async function loadSnapshot(): Promise<GatewaySnapshot> {
   const db = supabaseAdmin()
   const [
@@ -115,7 +133,7 @@ async function loadSnapshot(): Promise<GatewaySnapshot> {
     shares,
     optOuts,
   ] = await Promise.all([
-    db.from("providers").select("*"),
+    db.from("providers").select("*, members!providers_owner_email_fkey(role)"),
     db.from("provider_secrets").select("provider_id, ciphertext"),
     db.from("models").select("*"),
     db.from("routes").select("*"),
@@ -163,6 +181,7 @@ async function loadSnapshot(): Promise<GatewaySnapshot> {
       config: row.config ?? {},
       enabled: row.enabled,
       ownerEmail: row.owner_email ?? null,
+      publicOnly: ownerIsRestricted(row),
       quotaRpm: row.quota_rpm ?? null,
       quotaRpd: row.quota_rpd ?? null,
       credentials,

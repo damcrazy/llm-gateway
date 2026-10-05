@@ -25,6 +25,7 @@ export function provider(
     quotaRpd: null,
     credentials: { apiKey: "sk-test" },
     ...overrides,
+    publicOnly: overrides.publicOnly ?? Boolean(overrides.ownerEmail),
   }
 }
 

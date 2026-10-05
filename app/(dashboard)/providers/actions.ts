@@ -234,9 +234,10 @@ export async function updateProvider(
   if (!existing.ok) return existing
   const cleaned = cleanConfigFields(existing.type, parsed.data.config)
   if (!cleaned.ok) return cleaned
+  // Admins' providers (shared or private) may point at local addresses.
   const problem = await configProblem(
     cleaned.value,
-    access.provider.ownerEmail !== null
+    access.provider.ownerEmail !== null && !access.me.isAdmin
   )
   if (problem) return { ok: false, error: problem }
 

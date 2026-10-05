@@ -11,6 +11,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 
 import { listOpenAIModels } from "./adapters/openai"
 import type { ProviderRuntime } from "./config"
+import { ownerIsRestricted } from "./config"
 import { fetchFor } from "./provider-fetch"
 import { upstreamErrorFromResponse } from "./errors"
 import { lookupMetadata, type ModelMetadata } from "./metadata"
@@ -35,7 +36,7 @@ const NOISE =
 async function loadProvider(providerId: string): Promise<ProviderRuntime> {
   const { data, error } = await supabaseAdmin()
     .from("providers")
-    .select("*")
+    .select("*, members!providers_owner_email_fkey(role)")
     .eq("id", providerId)
     .single()
   if (error || !data) throw new Error("Provider not found")
@@ -48,6 +49,7 @@ async function loadProvider(providerId: string): Promise<ProviderRuntime> {
     config: row.config ?? {},
     enabled: row.enabled,
     ownerEmail: row.owner_email ?? null,
+    publicOnly: ownerIsRestricted(row),
     quotaRpm: row.quota_rpm ?? null,
     quotaRpd: row.quota_rpd ?? null,
     credentials: await loadProviderCredentials(row.id),

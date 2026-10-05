@@ -48,6 +48,7 @@ import { loadModelList } from "../../models/data"
 import { ModelFormDialog } from "../../models/model-form-dialog"
 import { ModelsExplorer } from "../../models/models-table"
 import { ProviderEnabledSwitch } from "../provider-controls"
+import { ProviderVisibilitySwitch } from "../shared-provider-controls"
 import { presetOf, providerKindLabel, UUID_PATTERN } from "../shared"
 import { DiscoverModelsButton } from "./discover-models-dialog"
 import {
@@ -164,6 +165,14 @@ export default async function ProviderPage({ params }: Props) {
               enabled={provider.enabled}
               showLabel
             />
+            {me.isAdmin && (
+              <ProviderVisibilitySwitch
+                providerId={provider.id}
+                name={provider.name}
+                visible={!own}
+                showLabel
+              />
+            )}
             <DeleteProviderButton
               id={provider.id}
               name={provider.name}

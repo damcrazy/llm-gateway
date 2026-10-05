@@ -339,3 +339,77 @@ export async function acceptProviderInvite(
 
   return { ok: true, data: { providerId, providerName } }
 }
+
+/**
+ * Admins: whether a provider is the gateway's (every member can use it) or
+ * private to this admin (only their apps, plus people they invite).
+ * Making it private makes the admin its owner; making it public again
+ * removes invites and individual shares, since everyone has it.
+ */
+export async function setProviderVisibility(
+  providerId: string,
+  visibleToMembers: boolean
+): Promise<ActionResult> {
+  const me = await requireMember()
+  if (!me.isAdmin) return { ok: false, error: "Only admins can do this" }
+  if (!idSchema.safeParse(providerId).success)
+    return { ok: false, error: "Provider not found" }
+  const db = supabaseAdmin()
+  const { data: provider } = await db
+    .from("providers")
+    .select("id, name, owner_email")
+    .eq("id", providerId)
+    .maybeSingle()
+  if (!provider) return { ok: false, error: "Provider not found" }
+  const owner = (provider.owner_email as string | null) ?? null
+  const name = provider.name as string
+
+  if (visibleToMembers) {
+    if (owner === null)
+      return { ok: true, message: `${name} is already visible to members` }
+    // Only your own private provider can be handed to everyone.
+    if (owner !== me.email) return { ok: false, error: "Provider not found" }
+    const { error } = await db
+      .from("providers")
+      .update({ owner_email: null })
+      .eq("id", providerId)
+    if (error) return actionError(error)
+    await Promise.all([
+      db.from("provider_shares").delete().eq("provider_id", providerId),
+      db
+        .from("provider_invites")
+        .update({ revoked_at: new Date().toISOString() })
+        .eq("provider_id", providerId)
+        .is("accepted_at", null)
+        .is("revoked_at", null),
+    ])
+  } else {
+    if (owner === me.email)
+      return { ok: true, message: `${name} is already hidden from members` }
+    if (owner !== null) return { ok: false, error: "Provider not found" }
+    const { error } = await db
+      .from("providers")
+      .update({ owner_email: me.email })
+      .eq("id", providerId)
+      .is("owner_email", null)
+    if (error) return actionError(error)
+  }
+
+  invalidateGatewayConfig()
+  await audit(
+    me.email,
+    visibleToMembers ? "provider.show" : "provider.hide",
+    visibleToMembers
+      ? `Made provider '${name}' available to every member`
+      : `Hid provider '${name}' from members (now private to them)`,
+    { type: "provider", id: providerId, name }
+  )
+  revalidatePath("/providers")
+  revalidatePath(`/providers/${providerId}`)
+  return {
+    ok: true,
+    message: visibleToMembers
+      ? `${name} is now available to every member`
+      : `${name} is now only yours. Invite people from its page if you want.`,
+  }
+}

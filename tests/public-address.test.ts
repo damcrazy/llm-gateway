@@ -72,3 +72,25 @@ describe("publicUrlProblem", () => {
     expect(publicUrlProblem("not a url")).toContain("full URL")
   })
 })
+
+describe("ownerIsRestricted", () => {
+  test("only providers owned by non-admins are limited to public addresses", async () => {
+    const { ownerIsRestricted } = await import("@/lib/gateway/config")
+    expect(ownerIsRestricted({ owner_email: null })).toBe(false)
+    expect(
+      ownerIsRestricted({ owner_email: "m@x.io", members: { role: "member" } })
+    ).toBe(true)
+    expect(ownerIsRestricted({ owner_email: "m@x.io", members: null })).toBe(
+      true
+    )
+    expect(
+      ownerIsRestricted({ owner_email: "a@x.io", members: { role: "admin" } })
+    ).toBe(false)
+    expect(
+      ownerIsRestricted({
+        owner_email: "s@x.io",
+        members: { role: "superadmin" },
+      })
+    ).toBe(false)
+  })
+})

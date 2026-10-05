@@ -33,6 +33,7 @@ import { AddProviderDialog } from "./add-provider-dialog"
 import { ProviderEnabledSwitch } from "./provider-controls"
 import {
   LeaveProviderButton,
+  ProviderVisibilitySwitch,
   UseInMyAppsSwitch,
 } from "./shared-provider-controls"
 import { describeEndpoint, providerKindLabel } from "./shared"
@@ -50,10 +51,11 @@ export default async function ProvidersPage() {
       loadCredentialHints(),
     ])
   const all = (providerData ?? []) as ProviderRow[]
-  // Admins manage the shared providers; members manage their own.
+  // Admins manage the gateway's providers and their own private ones;
+  // members manage their own.
   const providers = all.filter((provider) =>
     me.isAdmin
-      ? provider.owner_email === null
+      ? provider.owner_email === null || provider.owner_email === me.email
       : provider.owner_email === me.email
   )
   // Slugs are global; prefix members' own with their name to avoid clashes.
@@ -62,7 +64,10 @@ export default async function ProvidersPage() {
     .replace(/[^a-z0-9]+/g, "-")
     .slice(0, 20)
   const membersProviders = me.isAdmin
-    ? all.filter((provider) => provider.owner_email !== null)
+    ? all.filter(
+        (provider) =>
+          provider.owner_email !== null && provider.owner_email !== me.email
+      )
     : []
 
   // Providers you can use but don't own: shared with you by their owner,
@@ -139,7 +144,7 @@ export default async function ProvidersPage() {
         title="Providers"
         description={
           me.isAdmin
-            ? "Shared upstream APIs: every member can use their models, within the access you give them. Credentials are encrypted at rest and never leave the server."
+            ? "Upstream APIs for the gateway. A provider visible to members can be used by every member, within the access you give them; switch that off to keep it to yourself and invite only the people you choose. Credentials are encrypted at rest and never leave the server."
             : "Connect your own API keys, use ones people share with you, and choose which of the gateway's providers your apps use. Credentials are encrypted at rest and never leave the server."
         }
         actions={
@@ -190,6 +195,11 @@ export default async function ProvidersPage() {
                   <TableHead data-tour="providers-col-enabled">
                     Enabled
                   </TableHead>
+                  {me.isAdmin && (
+                    <TableHead data-tour="providers-col-visible">
+                      Visible to members
+                    </TableHead>
+                  )}
                   <TableHead className="w-12 pr-6">
                     <span className="sr-only">Open</span>
                   </TableHead>
@@ -264,6 +274,15 @@ export default async function ProvidersPage() {
                           enabled={provider.enabled}
                         />
                       </TableCell>
+                      {me.isAdmin && (
+                        <TableCell>
+                          <ProviderVisibilitySwitch
+                            providerId={provider.id}
+                            name={provider.name}
+                            visible={provider.owner_email === null}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="pr-6 text-right">
                         <Button variant="ghost" size="icon-sm" asChild>
                           <Link
@@ -397,10 +416,13 @@ export default async function ProvidersPage() {
         <Card className="py-0" data-tour="providers-members-own">
           <CardContent className="px-0">
             <div className="px-6 pt-5 pb-2">
-              <h2 className="font-medium">Members&apos; own providers</h2>
+              <h2 className="font-medium">
+                Other people&apos;s private providers
+              </h2>
               <p className="text-sm text-muted-foreground">
-                Connected by members with their own keys. Only the owner&apos;s
-                apps can use them; you can&apos;t open or edit them here.
+                Connected by members (or other admins) with their own keys. Only
+                the owner&apos;s apps, and people they invite, can use them; you
+                can&apos;t open or edit them here.
               </p>
             </div>
             <Table>
