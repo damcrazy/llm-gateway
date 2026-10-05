@@ -45,9 +45,9 @@ const models: TourDefinition = {
     },
     {
       target: "models-source",
-      title: "Your providers or shared",
+      title: "Personal or gateway",
       side: "bottom",
-      body: "<b>Your providers</b> are models from API keys you connected yourself: only your apps can use them and you pay the provider directly. <b>Shared</b> models come from the gateway's providers and follow your access. Press one to show only that group.",
+      body: "<b>Personal</b> models come from your own API keys and from providers other people shared with you; your access plan doesn't limit them. <b>Gateway</b> models come from the gateway's providers and follow your access. Press one to show only that group.",
     },
     // Both views
     {
@@ -155,7 +155,19 @@ const providers: TourDefinition = {
       target: "providers-members-own",
       title: "Members' own providers",
       side: "top",
-      body: "Providers that members connected with their own keys. Only the owner's apps can use them, and the owner's model access doesn't limit them. You can see them here, but you can't open or edit them.",
+      body: "Providers that members connected with their own keys. Only the owner's apps (and people the owner shared them with) can use them, and model access doesn't limit them. You can see them here, but you can't open or edit them.",
+    },
+    {
+      target: "providers-shared-with-me",
+      title: "Shared with you",
+      side: "top",
+      body: "Providers other people shared with you through an invite. Your apps can use their models, and the owner's key pays. You can't see their key or share them further. Switch one off to pause it for your apps, or <b>Leave</b> to give it back.",
+    },
+    {
+      target: "providers-gateway",
+      title: "From the gateway",
+      side: "top",
+      body: "The providers the gateway's owner set up for everyone. Switch one off under <b>Use in my apps</b> and your apps stop using its models (buckets skip them); it stays on for everyone else, and you can switch it back on any time.",
     },
     {
       target: "providers-open",
@@ -198,6 +210,12 @@ const provider: TourDefinition = {
       title: "Credentials",
       side: "left",
       body: "The key is encrypted at rest and never shown again; the hint helps you recognise it. <b>Replace credentials</b> overwrites everything stored, and fields you leave empty are cleared. <b>Get an API key</b> links to the provider's key page when there is one.",
+    },
+    {
+      target: "provider-sharing",
+      title: "Share it",
+      side: "top",
+      body: "Let someone else's apps use this provider with your key. <b>Invite someone</b> gives you a link and a separate 6-digit code; they open the link, sign in and enter the code. You see what each person uses, and <b>Take back</b> ends their access within seconds. They can't share it further.",
     },
     {
       target: "provider-add-model",

@@ -21,6 +21,7 @@ import { accessPolicy, canUseModel, describePolicy } from "@/lib/access"
 import type { SessionMember } from "@/lib/auth"
 import type { ModelRow, RouteRow } from "@/lib/db/types"
 import { priceTier } from "@/lib/pricing"
+import { loadReach } from "@/lib/provider-reach"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
@@ -69,6 +70,14 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
         .select("id, name, enabled, owner_email"),
     ])
 
+  const reach = await loadReach(member.email)
+  const providerLabel = (providerId: string) => {
+    const name = providerName.get(providerId) ?? "Unknown provider"
+    const owner = ownerOf.get(providerId) ?? null
+    return owner && owner !== member.email
+      ? `${name} (shared by ${owner})`
+      : name
+  }
   const policy = accessPolicy({
     role: member.role,
     model_access: member.modelAccess,
@@ -91,14 +100,16 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
   const ownerOf = new Map(
     providerRows.map((provider) => [provider.id, provider.owner_email])
   )
-  // Shared models follow the policy; your own providers' models are yours.
+  // The gateway's models follow the policy; your own providers' models, and
+  // ones shared with you, are yours to use (unless you switched them off).
   const usable = (model: ModelFields, viaRoute?: string) =>
     canUseModel(
       policy,
       model,
       ownerOf.get(model.provider_id) ?? null,
       member.email,
-      viaRoute
+      viaRoute,
+      reach
     )
   const live = ((modelsResult.data ?? []) as ModelFields[]).filter((model) =>
     liveProviders.has(model.provider_id)
@@ -135,8 +146,9 @@ export async function AvailableModels({ member }: { member: SessionMember }) {
   const models: AvailableModel[] = live
     .filter((model) => usable(model))
     .map((model) => ({
-      own: ownerOf.get(model.provider_id) === member.email,
-      provider: providerName.get(model.provider_id) ?? "Unknown provider",
+      // Personal: your providers and ones shared with you (someone's own key).
+      own: (ownerOf.get(model.provider_id) ?? null) !== null,
+      provider: providerLabel(model.provider_id),
       slug: model.slug,
       displayName: model.display_name,
       kind: model.kind,

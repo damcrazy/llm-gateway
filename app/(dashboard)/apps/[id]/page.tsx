@@ -34,7 +34,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { accessPolicy, canUseModel, describePolicy } from "@/lib/access"
+import {
+  accessPolicy,
+  canUseModel,
+  describePolicy,
+  providerVisible,
+  type ProviderReach,
+} from "@/lib/access"
+import { loadReach } from "@/lib/provider-reach"
 import { getOrigin, requireMember } from "@/lib/auth"
 import type {
   AppBucketRow,
@@ -201,7 +208,9 @@ export default async function AppPage({ params, searchParams }: Props) {
     strategy: bucket.strategy ?? "ordered",
     hedgeAfterMs: bucket.hedge_after_ms ?? null,
   }))
+  const reach = await loadReach(app.owner_email)
   const bucketsData = buildBucketsData({
+    reach,
     models,
     providers: (providersResult.data ?? []) as {
       id: string
@@ -371,6 +380,7 @@ type PageModel = Pick<
 
 /** Everything the Models tab shows: each model's price, health and usage. */
 function buildBucketsData({
+  reach,
   models,
   providers,
   health,
@@ -391,6 +401,7 @@ function buildBucketsData({
   policy: ReturnType<typeof accessPolicy>
   buckets: BucketsData["buckets"]
   app: AppRow
+  reach: ProviderReach
 }): BucketsData {
   const providerById = new Map(providers.map((p) => [p.id, p]))
   const cooldownById = new Map(
@@ -404,21 +415,39 @@ function buildBucketsData({
   const now = Date.now()
 
   const addable: string[] = []
-  // Another member's private provider: those models don't exist for this app.
-  const visible = models.filter((model) => {
-    const owner = providerById.get(model.provider_id)?.owner_email ?? null
-    return owner === null || owner === app.owner_email
-  })
+  // Another member's private provider: those models don't exist for this
+  // app, unless its owner shared it with this app's owner.
+  const visible = models.filter((model) =>
+    providerVisible(
+      model.provider_id,
+      providerById.get(model.provider_id)?.owner_email ?? null,
+      app.owner_email,
+      reach
+    )
+  )
   const bucketModels: BucketModel[] = visible.map((model) => {
     const provider = providerById.get(model.provider_id)
     const ownerEmail = provider?.owner_email ?? null
-    const permitted = canUseModel(policy, model, ownerEmail, app.owner_email)
+    const permitted = canUseModel(
+      policy,
+      model,
+      ownerEmail,
+      app.owner_email,
+      undefined,
+      reach
+    )
+    const switchedOff = reach.switchedOff.has(model.provider_id)
     const cooldownUntil = cooldownById.get(model.id) ?? 0
     let status: ModelStatus = { kind: "ok" }
     if (!model.enabled) {
       status = { kind: "unavailable", label: "Turned off by an admin: skipped" }
     } else if (!provider?.enabled) {
       status = { kind: "unavailable", label: "Its provider is off: skipped" }
+    } else if (switchedOff) {
+      status = {
+        kind: "unavailable",
+        label: "Its provider is switched off for your apps: skipped",
+      }
     } else if (!permitted) {
       status = {
         kind: "unavailable",
@@ -438,7 +467,10 @@ function buildBucketsData({
       id: model.id,
       slug: model.slug,
       name: model.display_name || model.model_id,
-      provider: provider?.name ?? "Unknown provider",
+      provider:
+        ownerEmail && ownerEmail !== app.owner_email
+          ? `${provider?.name ?? "Unknown provider"} (shared by ${ownerEmail})`
+          : (provider?.name ?? "Unknown provider"),
       own: ownerEmail !== null,
       kind: model.kind,
       capabilities: model.capabilities ?? [],

@@ -5,7 +5,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 export type ModelSource = "all" | "own" | "shared"
 
 /**
- * "Your providers" / "Shared" toggles with counts. Neither pressed shows
+ * "Personal" (your providers and ones shared with you) / "Gateway" (the
+ * gateway's providers) toggles with counts. Neither pressed shows
  * everything; pressing the active one again clears it.
  */
 export function ModelSourceFilter({
@@ -27,7 +28,7 @@ export function ModelSourceFilter({
       aria-label="Filter by provider type"
     >
       <ToggleGroupItem value="own" className="px-3" disabled={!counts.own}>
-        Your providers{" "}
+        Personal{" "}
         <span className="text-muted-foreground tabular-nums">{counts.own}</span>
       </ToggleGroupItem>
       <ToggleGroupItem
@@ -35,7 +36,7 @@ export function ModelSourceFilter({
         className="px-3"
         disabled={!counts.shared}
       >
-        Shared{" "}
+        Gateway{" "}
         <span className="text-muted-foreground tabular-nums">
           {counts.shared}
         </span>

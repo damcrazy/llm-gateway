@@ -285,6 +285,13 @@ Anyone who signs up becomes a **Member** with free models only. On **Members** (
 - **Private providers** are added by members on **Providers**, with their own API keys. Only that member's apps can use the models: other members can't see them, call them or put them in a bucket or route, and admins only see a read-only list. Their models aren't limited by the member's model access (it's their key), and their cost doesn't count toward the monthly budget you set. App budgets still count everything.
 - A member can connect up to 10 providers. Their slugs are prefixed with the member's name by default, since model names (`slug/model`) are shared across the gateway.
 - Removing a member deletes their providers too.
+- **Sharing a private provider:** its owner can let other people's apps use it, with the owner's key paying.
+  - On the provider's page, **Invite someone** creates a link and a separate 6-digit code. It can be locked to one email address, and expires after 1, 7 or 30 days.
+  - The other person opens the link, signs in (they're brought back to the invite afterwards) and enters the code.
+  - Invites work once and lock after 5 wrong codes. Only hashes of the link and code are stored.
+  - People it's shared with see the provider's name and models, never its key or settings, and can't share it further.
+  - The owner sees each person's usage this month and can **Take back** access at any time; the other person can **Leave**. Changes reach the gateway within about 15 seconds.
+- **Switching providers off for yourself:** under **Use in my apps** on **Providers**, anyone can switch off a gateway provider, or one shared with them. Their apps then stop using it (buckets skip it, and calling one of its models by name gets a 403). It stays on for everyone else.
 
 For each member you set:
 - **Model access:** free models only (the default), a picked list of routes and models, or everything.

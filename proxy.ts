@@ -12,6 +12,10 @@ import { describeNames, ENV_NAMES, readEnv } from "@/lib/env-names"
 
 const PUBLIC_PATHS = ["/login", "/signup", "/auth/", "/forgot-password"]
 
+/** Where to go back to once sign-in (and two-factor) is done. */
+export const RETURN_COOKIE = "gw-return-to"
+const RETURN_MAX_AGE_S = 15 * 60
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
@@ -52,14 +56,34 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname
   const isPublic = PUBLIC_PATHS.some((prefix) => path.startsWith(prefix))
 
+  // A deep link (like an invite) opened before signing in, or before the
+  // two-factor step, is remembered and reopened by /auth/continue.
+  const remember =
+    request.method === "GET" &&
+    !isPublic &&
+    path !== "/" &&
+    !path.startsWith("/mfa") &&
+    (!data?.claims || data.claims.aal !== "aal2")
+  const setReturn = (res: NextResponse) => {
+    if (!remember) return res
+    res.cookies.set(RETURN_COOKIE, path + request.nextUrl.search, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: request.nextUrl.protocol === "https:",
+      path: "/",
+      maxAge: RETURN_MAX_AGE_S,
+    })
+    return res
+  }
+
   if (!data?.claims && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
     url.search = ""
-    return NextResponse.redirect(url)
+    return setReturn(NextResponse.redirect(url))
   }
 
-  return response
+  return setReturn(response)
 }
 
 export const config = {

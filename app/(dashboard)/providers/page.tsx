@@ -26,10 +26,15 @@ import {
 import { requireMember } from "@/lib/auth"
 import type { ProviderRow } from "@/lib/db/types"
 import { loadCredentialHints } from "@/lib/providers/secrets"
+import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 import { AddProviderDialog } from "./add-provider-dialog"
 import { ProviderEnabledSwitch } from "./provider-controls"
+import {
+  LeaveProviderButton,
+  UseInMyAppsSwitch,
+} from "./shared-provider-controls"
 import { describeEndpoint, providerKindLabel } from "./shared"
 
 export const metadata: Metadata = { title: "Providers" }
@@ -60,6 +65,62 @@ export default async function ProvidersPage() {
     ? all.filter((provider) => provider.owner_email !== null)
     : []
 
+  // Providers you can use but don't own: shared with you by their owner,
+  // and (for members) the gateway's own. Each can be switched off for you.
+  const admin = supabaseAdmin()
+  const [{ data: shareRows }, { data: optOutRows }] = await Promise.all([
+    admin
+      .from("provider_shares")
+      .select("provider_id")
+      .eq("member_email", me.email),
+    admin
+      .from("provider_opt_outs")
+      .select("provider_id")
+      .eq("member_email", me.email),
+  ])
+  const sharedIds = (shareRows ?? []).map((row) => row.provider_id as string)
+  const switchedOff = new Set(
+    (optOutRows ?? []).map((row) => row.provider_id as string)
+  )
+  const [{ data: otherRows }, { data: otherModels }] = await Promise.all([
+    // Names and owners only: never another member's settings or keys.
+    me.isAdmin && !sharedIds.length
+      ? Promise.resolve({ data: [] })
+      : admin
+          .from("providers")
+          .select("id, name, slug, type, owner_email, enabled")
+          .or(
+            [
+              ...(me.isAdmin ? [] : ["owner_email.is.null"]),
+              ...(sharedIds.length ? [`id.in.(${sharedIds.join(",")})`] : []),
+            ].join(",")
+          ),
+    admin.from("models").select("provider_id, enabled").eq("enabled", true),
+  ])
+  type OtherProvider = {
+    id: string
+    name: string
+    slug: string
+    type: ProviderRow["type"]
+    owner_email: string | null
+    enabled: boolean
+  }
+  const others = ((otherRows ?? []) as OtherProvider[]).filter(
+    (provider) => provider.enabled
+  )
+  const sharedWithMe = others
+    .filter((provider) => provider.owner_email !== null)
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const gatewayProviders = me.isAdmin
+    ? []
+    : others
+        .filter((provider) => provider.owner_email === null)
+        .sort((a, b) => a.name.localeCompare(b.name))
+  const liveModels = new Map<string, number>()
+  for (const row of (otherModels ?? []) as { provider_id: string }[])
+    liveModels.set(row.provider_id, (liveModels.get(row.provider_id) ?? 0) + 1)
+  const hasOthers = sharedWithMe.length > 0 || gatewayProviders.length > 0
+
   const counts = new Map<string, { total: number; enabled: number }>()
   for (const row of (modelData ?? []) as {
     provider_id: string
@@ -75,11 +136,11 @@ export default async function ProvidersPage() {
     <>
       <PageTour id="providers" />
       <PageHeader
-        title={me.isAdmin ? "Providers" : "Your providers"}
+        title="Providers"
         description={
           me.isAdmin
             ? "Shared upstream APIs: every member can use their models, within the access you give them. Credentials are encrypted at rest and never leave the server."
-            : "Connect your own API keys. Their models can only be used by your apps, and you pay the provider directly. Credentials are encrypted at rest and never leave the server."
+            : "Connect your own API keys, use ones people share with you, and choose which of the gateway's providers your apps use. Credentials are encrypted at rest and never leave the server."
         }
         actions={
           providers.length > 0 && (
@@ -89,7 +150,10 @@ export default async function ProvidersPage() {
       />
 
       {providers.length === 0 ? (
-        <Empty className="border" data-tour="providers-empty">
+        <Empty
+          className={hasOthers ? "flex-none border py-10" : "border"}
+          data-tour="providers-empty"
+        >
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <ServerIcon />
@@ -213,6 +277,116 @@ export default async function ProvidersPage() {
                     </TableRow>
                   )
                 })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {sharedWithMe.length > 0 && (
+        <Card className="py-0" data-tour="providers-shared-with-me">
+          <CardContent className="px-0">
+            <div className="px-6 pt-5 pb-2">
+              <h2 className="font-medium">Shared with you</h2>
+              <p className="text-sm text-muted-foreground">
+                Other people&apos;s providers you accepted an invite for. Your
+                apps can use their models; their owner&apos;s key pays and they
+                can take access back at any time.
+              </p>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-6">Provider</TableHead>
+                  <TableHead>Shared by</TableHead>
+                  <TableHead className="text-right">Models</TableHead>
+                  <TableHead>Use in my apps</TableHead>
+                  <TableHead className="w-24 pr-6" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sharedWithMe.map((provider) => (
+                  <TableRow key={provider.id}>
+                    <TableCell className="pl-6">
+                      <div className="font-medium">{provider.name}</div>
+                      <div className="font-mono text-xs text-muted-foreground">
+                        {provider.slug}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {provider.owner_email}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {liveModels.get(provider.id) ?? 0}
+                    </TableCell>
+                    <TableCell>
+                      <UseInMyAppsSwitch
+                        providerId={provider.id}
+                        name={provider.name}
+                        on={!switchedOff.has(provider.id)}
+                      />
+                    </TableCell>
+                    <TableCell className="pr-6 text-right">
+                      <LeaveProviderButton
+                        providerId={provider.id}
+                        name={provider.name}
+                        owner={provider.owner_email!}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {gatewayProviders.length > 0 && (
+        <Card className="py-0" data-tour="providers-gateway">
+          <CardContent className="px-0">
+            <div className="px-6 pt-5 pb-2">
+              <h2 className="font-medium">From the gateway</h2>
+              <p className="text-sm text-muted-foreground">
+                Providers the gateway&apos;s owner set up for everyone, within
+                your account&apos;s model access. Switch one off and your apps
+                stop using it; it stays on for everyone else.
+              </p>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-6">Provider</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Models</TableHead>
+                  <TableHead className="pr-6">Use in my apps</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {gatewayProviders.map((provider) => (
+                  <TableRow key={provider.id}>
+                    <TableCell className="pl-6">
+                      <div className="font-medium">{provider.name}</div>
+                      <div className="font-mono text-xs text-muted-foreground">
+                        {provider.slug}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {providerKindLabel(provider.type, {}).typeLabel}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {liveModels.get(provider.id) ?? 0}
+                    </TableCell>
+                    <TableCell className="pr-6">
+                      <UseInMyAppsSwitch
+                        providerId={provider.id}
+                        name={provider.name}
+                        on={!switchedOff.has(provider.id)}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </CardContent>

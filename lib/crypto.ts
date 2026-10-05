@@ -4,7 +4,9 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
   randomBytes,
+  randomInt,
 } from "node:crypto"
 
 import { env } from "@/lib/env"
@@ -77,4 +79,29 @@ export function hashApiKey(key: string): string {
 /** "…ab12" style hint so the UI can show which credential is stored. */
 export function secretHint(value: string): string {
   return value.length <= 8 ? "••••" : `…${value.slice(-4)}`
+}
+
+// Provider share invites: a link token (random, stored as a sha256 hash) and
+// a separate 6-digit code (stored as an HMAC keyed by the encryption key and
+// tied to the token, so a leaked database row can't be brute-forced).
+
+export function generateInvite() {
+  const token = randomBytes(24).toString("base64url")
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0")
+  return {
+    token,
+    code,
+    tokenHash: hashInviteToken(token),
+    codeHash: hashInviteCode(token, code),
+  }
+}
+
+export function hashInviteToken(token: string): string {
+  return createHash("sha256").update(`invite:${token}`).digest("hex")
+}
+
+export function hashInviteCode(token: string, code: string): string {
+  return createHmac("sha256", encryptionKey())
+    .update(`invite-code:${token}:${code}`)
+    .digest("hex")
 }

@@ -96,6 +96,8 @@ export function snapshot(
     health: new Map(),
     latency: new Map(),
     quotaUsage: new Map(),
+    sharedWith: new Map(),
+    switchedOff: new Map(),
     loadedAt: Date.now(),
   }
 }

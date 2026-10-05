@@ -130,7 +130,8 @@ export async function getSessionMember(): Promise<SessionMember | null> {
 export function pathForState(state: SessionState): string {
   switch (state.status) {
     case "ok":
-      return "/"
+      // Back to a remembered deep link, if any (else the overview).
+      return "/auth/continue"
     case "mfa_setup":
       return "/mfa/setup"
     case "mfa_challenge":

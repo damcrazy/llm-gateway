@@ -20,7 +20,7 @@ export function SetupClient({
       friendlyName="Authenticator app"
       onEnrolled={() => {
         toast.success("Two-factor authentication is on")
-        router.replace("/")
+        router.replace("/auth/continue")
         router.refresh()
       }}
     />

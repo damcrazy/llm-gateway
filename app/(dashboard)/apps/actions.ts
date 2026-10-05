@@ -4,12 +4,18 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { actionError, type ActionResult } from "@/lib/actions"
-import { accessPolicy, canUseModel, describePolicy } from "@/lib/access"
+import {
+  accessPolicy,
+  canUseModel,
+  describePolicy,
+  providerVisible,
+} from "@/lib/access"
 import { audit } from "@/lib/audit"
 import { requireMember, type SessionMember } from "@/lib/auth"
 import { generateApiKey } from "@/lib/crypto"
 import type { MemberRow, ModelRow } from "@/lib/db/types"
 import { invalidateApiKeyCache } from "@/lib/gateway/auth"
+import { loadReach } from "@/lib/provider-reach"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
 import {
@@ -194,7 +200,11 @@ export async function updateAppSettings(
 type OwnerAccess = Pick<MemberRow, "role" | "model_access" | "allowed_models">
 type PricedModel = Pick<
   ModelRow,
-  "id" | "slug" | "input_price_per_mtok" | "output_price_per_mtok"
+  | "id"
+  | "slug"
+  | "provider_id"
+  | "input_price_per_mtok"
+  | "output_price_per_mtok"
 > & { providers: { owner_email: string | null } | null }
 
 const bucketsSchema = z
@@ -282,7 +292,7 @@ export async function saveAppBuckets(
         ? db
             .from("models")
             .select(
-              "id, slug, input_price_per_mtok, output_price_per_mtok, providers(owner_email)"
+              "id, slug, provider_id, input_price_per_mtok, output_price_per_mtok, providers(owner_email)"
             )
             .in("id", modelIds)
         : Promise.resolve({ data: [], error: null }),
@@ -296,6 +306,7 @@ export async function saveAppBuckets(
   const owner = appRow?.members
   if (!appRow || !owner) return { ok: false, error: "Unknown app" }
   const policy = accessPolicy(owner)
+  const reach = await loadReach(appRow.owner_email)
   const found = new Map(
     ((models ?? []) as PricedModel[]).map((model) => [model.id, model])
   )
@@ -304,9 +315,30 @@ export async function saveAppBuckets(
     if (!model)
       return { ok: false, error: "One of the models no longer exists" }
     const providerOwner = model.providers?.owner_email ?? null
-    if (providerOwner !== null && providerOwner !== appRow.owner_email)
+    if (
+      !providerVisible(
+        model.provider_id,
+        providerOwner,
+        appRow.owner_email,
+        reach
+      )
+    )
       return { ok: false, error: "One of the models no longer exists" }
-    if (!canUseModel(policy, model, providerOwner, appRow.owner_email)) {
+    if (reach.switchedOff.has(model.provider_id))
+      return {
+        ok: false,
+        error: `${model.slug}'s provider is switched off for your apps. Switch it back on under Providers first.`,
+      }
+    if (
+      !canUseModel(
+        policy,
+        model,
+        providerOwner,
+        appRow.owner_email,
+        undefined,
+        reach
+      )
+    ) {
       return {
         ok: false,
         error: `${model.slug} isn't available to this app's owner (${describePolicy(policy)})`,

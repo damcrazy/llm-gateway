@@ -62,7 +62,7 @@ export function ChallengeClient({
       )
       return
     }
-    router.replace("/")
+    router.replace("/auth/continue")
     router.refresh()
   }
 

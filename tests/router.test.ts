@@ -338,6 +338,91 @@ describe("resolveModel", () => {
     })
   })
 
+  describe("shared and switched-off providers", () => {
+    const theirs = provider({
+      slug: "their-openai",
+      ownerEmail: "them@example.com",
+    })
+    const theirModel = model(theirs, "gpt-4o", {
+      input_price_per_mtok: 2.5,
+      output_price_per_mtok: 10,
+    })
+    const gatewayFree = model(groq, "shared-free", {
+      input_price_per_mtok: 0,
+      output_price_per_mtok: 0,
+    })
+    const freeOnly = accessPolicy({
+      role: "member",
+      model_access: "free",
+      allowed_models: [],
+    })
+    const base = snapshot([theirModel, gatewayFree], [])
+    const withShare = {
+      ...base,
+      sharedWith: new Map([["me@example.com", new Set([theirs.id])]]),
+    }
+    const myApp = app({
+      owner_email: "me@example.com",
+      buckets: [{ name: "b", model_ids: [theirModel.id, gatewayFree.id] }],
+    })
+
+    test("a provider shared with you works, even on a free-only plan", () => {
+      expect(
+        resolveModel(
+          withShare,
+          "their-openai/gpt-4o",
+          "chat",
+          myApp,
+          chat(),
+          freeOnly
+        ).candidates
+      ).toEqual([theirModel])
+      expect(
+        resolveModel(withShare, "b", "chat", myApp, chat(), freeOnly).candidates
+      ).toEqual([theirModel, gatewayFree])
+    })
+
+    test("not shared (or revoked): it doesn't exist for you", () => {
+      try {
+        resolveModel(base, "their-openai/gpt-4o", "chat", myApp, chat())
+        throw new Error("expected to throw")
+      } catch (error) {
+        expect((error as GatewayError).status).toBe(404)
+      }
+      const otherApp = app({ owner_email: "someone@example.com" })
+      expect(() =>
+        resolveModel(withShare, "their-openai/gpt-4o", "chat", otherApp, chat())
+      ).toThrow(GatewayError)
+    })
+
+    test("a switched-off provider is skipped in buckets and refused by name", () => {
+      const off = {
+        ...withShare,
+        switchedOff: new Map([["me@example.com", new Set([groq.id])]]),
+      }
+      expect(resolveModel(off, "b", "chat", myApp, chat()).candidates).toEqual([
+        theirModel,
+      ])
+      try {
+        resolveModel(off, "groq/shared-free", "chat", myApp, chat())
+        throw new Error("expected to throw")
+      } catch (error) {
+        expect((error as GatewayError).status).toBe(403)
+        expect((error as GatewayError).message).toContain("switched off")
+      }
+    })
+
+    test("/v1/models lists shared models and hides switched-off ones", () => {
+      const off = {
+        ...withShare,
+        switchedOff: new Map([["me@example.com", new Set([groq.id])]]),
+      }
+      const ids = listAvailableModels(off, myApp, freeOnly).map((m) => m.id)
+      expect(ids).toContain("their-openai/gpt-4o")
+      expect(ids).not.toContain("groq/shared-free")
+    })
+  })
+
   describe("private providers", () => {
     const mine = provider({ slug: "my-openai", ownerEmail: "me@example.com" })
     const theirs = provider({

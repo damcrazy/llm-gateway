@@ -55,6 +55,8 @@ import {
   ProviderSettingsForm,
   ReplaceCredentialsDialog,
 } from "./provider-settings"
+import { SharingCard } from "./sharing-card"
+import { loadSharing } from "./sharing-data"
 
 type Props = { params: Promise<{ id: string }> }
 
@@ -83,9 +85,12 @@ export default async function ProviderPage({ params }: Props) {
     notFound()
   const own = provider.owner_email !== null
 
-  const [{ models }, hints] = await Promise.all([
+  // Only the owner shares a provider (admins don't share members' keys).
+  const isOwner = own && provider.owner_email === me.email
+  const [{ models }, hints, sharing] = await Promise.all([
     loadModelList({ providerId: provider.id }),
     loadCredentialHints(),
+    isOwner ? loadSharing(provider.id) : null,
   ])
   const spec = PROVIDER_TYPE_SPECS[provider.type]
   const preset = presetOf(provider.config)
@@ -139,7 +144,11 @@ export default async function ProviderPage({ params }: Props) {
             {own && (
               <Badge className="gap-1">
                 <LockIcon className="size-3" />
-                Private · only your apps
+                {sharing?.shares.length
+                  ? `Private · shared with ${sharing.shares.length} ${sharing.shares.length === 1 ? "person" : "people"}`
+                  : isOwner
+                    ? "Private · only your apps"
+                    : `Private · ${provider.owner_email}'s`}
               </Badge>
             )}
             <Badge variant="secondary">{typeLabel}</Badge>
@@ -224,6 +233,15 @@ export default async function ProviderPage({ params }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {sharing && (
+        <SharingCard
+          providerId={provider.id}
+          providerName={provider.name}
+          shares={sharing.shares}
+          invites={sharing.invites}
+        />
+      )}
 
       <section className="grid gap-3">
         <div className="flex flex-wrap items-end justify-between gap-3">

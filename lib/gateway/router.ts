@@ -1,6 +1,13 @@
 import "server-only"
 
-import { canUseModel, describePolicy, type AccessPolicy } from "@/lib/access"
+import {
+  canUseModel,
+  describePolicy,
+  NO_REACH,
+  providerVisible,
+  type AccessPolicy,
+  type ProviderReach,
+} from "@/lib/access"
 import type { AppBucket, GatewayApp, ModelKind } from "@/lib/db/types"
 import { ENDPOINT_FOR_KIND, MODEL_KIND_LABELS } from "@/lib/model-kinds"
 import { CAPABILITY_LABELS } from "@/lib/providers/catalog"
@@ -44,10 +51,16 @@ export function resolveModel(
   privateOwner: string | null = app?.owner_email ?? null
 ): Resolution {
   const buckets = app?.buckets ?? []
-  // Another member's private models don't exist as far as this caller knows.
+  const reach = reachFor(snapshot, privateOwner)
+  // Another member's private models don't exist as far as this caller
+  // knows, unless that member shared the provider with them.
   const visible = (model: ModelRuntime) =>
-    model.provider.ownerEmail === null ||
-    model.provider.ownerEmail === privateOwner
+    providerVisible(
+      model.provider.id,
+      model.provider.ownerEmail,
+      privateOwner,
+      reach
+    )
   let name = requested?.trim() ?? ""
   if (!name || name === "default") name = app?.default_model ?? ""
   if (!name) {
@@ -130,6 +143,22 @@ export function resolveModel(
     }
   }
 
+  if (reach.switchedOff.size) {
+    const kept = targets.filter(
+      (model) => !reach.switchedOff.has(model.provider.id)
+    )
+    if (!kept.length) {
+      const names = [...new Set(targets.map((m) => m.provider.name))]
+      throw new GatewayError(
+        403,
+        `You've switched off ${names.join(", ")} for your apps, so '${name}' can't be used. Switch it back on under Providers.`,
+        "provider_switched_off",
+        "permission_error"
+      )
+    }
+    targets = kept
+  }
+
   {
     targets = targets.filter((model) =>
       canUseModel(
@@ -137,7 +166,8 @@ export function resolveModel(
         model,
         model.provider.ownerEmail,
         privateOwner,
-        route?.name
+        route?.name,
+        reach
       )
     )
     if (!targets.length) {
@@ -326,6 +356,7 @@ export function listAvailableModels(
   privateOwner: string | null = app?.owner_email ?? null
 ): AvailableEntry[] {
   const buckets = app?.buckets ?? []
+  const reach = reachFor(snapshot, privateOwner)
   const onlyBuckets = app?.only_bucket_models === true
   const inBuckets = new Set(buckets.flatMap((b) => b.model_ids))
   const usable = (
@@ -340,7 +371,8 @@ export function listAvailableModels(
         model,
         model.provider.ownerEmail,
         privateOwner,
-        viaRoute
+        viaRoute,
+        reach
       )
     )
 
@@ -390,4 +422,16 @@ export function listAvailableModels(
     })
   }
   return [...bucketEntries, ...entries.sort((a, b) => a.id.localeCompare(b.id))]
+}
+
+/** What a person can reach besides the gateway's providers and their own. */
+export function reachFor(
+  snapshot: GatewaySnapshot,
+  email: string | null
+): ProviderReach {
+  if (!email) return NO_REACH
+  return {
+    sharedWithMe: snapshot.sharedWith.get(email) ?? NO_REACH.sharedWithMe,
+    switchedOff: snapshot.switchedOff.get(email) ?? NO_REACH.switchedOff,
+  }
 }

@@ -66,6 +66,10 @@ export interface GatewaySnapshot {
   latency: Map<string, LatencyStat>
   /** Free-tier quota calls this minute / UTC day: "scope:id:period" -> count. */
   quotaUsage: Map<string, number>
+  /** Provider ids each person can use because their owner shared them. */
+  sharedWith: Map<string, Set<string>>
+  /** Provider ids each person switched off for their own apps. */
+  switchedOff: Map<string, Set<string>>
   loadedAt: number
 }
 
@@ -99,20 +103,32 @@ export function invalidateGatewayConfig(): void {
 
 async function loadSnapshot(): Promise<GatewaySnapshot> {
   const db = supabaseAdmin()
-  const [providers, secrets, models, routes, targets, health, latency, quota] =
-    await Promise.all([
-      db.from("providers").select("*"),
-      db.from("provider_secrets").select("provider_id, ciphertext"),
-      db.from("models").select("*"),
-      db.from("routes").select("*"),
-      db.from("route_targets").select("*").order("position"),
-      db.from("model_health").select("*"),
-      // Optional: "fastest" buckets fall back to their listed order without it.
-      db.rpc("model_latency_stats", {
-        p_since: new Date(Date.now() - LATENCY_WINDOW_MS).toISOString(),
-      }),
-      db.rpc("current_quota_usage"),
-    ])
+  const [
+    providers,
+    secrets,
+    models,
+    routes,
+    targets,
+    health,
+    latency,
+    quota,
+    shares,
+    optOuts,
+  ] = await Promise.all([
+    db.from("providers").select("*"),
+    db.from("provider_secrets").select("provider_id, ciphertext"),
+    db.from("models").select("*"),
+    db.from("routes").select("*"),
+    db.from("route_targets").select("*").order("position"),
+    db.from("model_health").select("*"),
+    // Optional: "fastest" buckets fall back to their listed order without it.
+    db.rpc("model_latency_stats", {
+      p_since: new Date(Date.now() - LATENCY_WINDOW_MS).toISOString(),
+    }),
+    db.rpc("current_quota_usage"),
+    db.from("provider_shares").select("provider_id, member_email"),
+    db.from("provider_opt_outs").select("provider_id, member_email"),
+  ])
   for (const result of [providers, secrets, models, routes, targets, health]) {
     if (result.error)
       throw new Error(`Gateway config load failed: ${result.error.message}`)
@@ -222,6 +238,24 @@ async function loadSnapshot(): Promise<GatewaySnapshot> {
     quotaUsage.set(`${row.scope}:${row.scope_id}:${row.period}`, row.count)
   }
 
+  // If these can't be read, sharing fails closed: only owners keep access.
+  if (shares.error)
+    console.error("[gateway] provider shares not loaded:", shares.error.message)
+  if (optOuts.error)
+    console.error(
+      "[gateway] provider opt-outs not loaded:",
+      optOuts.error.message
+    )
+  const byEmail = (rows: { provider_id: string; member_email: string }[]) => {
+    const map = new Map<string, Set<string>>()
+    for (const row of rows) {
+      const set = map.get(row.member_email) ?? new Set<string>()
+      set.add(row.provider_id)
+      map.set(row.member_email, set)
+    }
+    return map
+  }
+
   return {
     providers: providerMap,
     models: modelMap,
@@ -231,6 +265,12 @@ async function loadSnapshot(): Promise<GatewaySnapshot> {
     health: healthMap,
     latency: latencyMap,
     quotaUsage,
+    sharedWith: byEmail(
+      (shares.data ?? []) as { provider_id: string; member_email: string }[]
+    ),
+    switchedOff: byEmail(
+      (optOuts.data ?? []) as { provider_id: string; member_email: string }[]
+    ),
     loadedAt,
   }
 }
