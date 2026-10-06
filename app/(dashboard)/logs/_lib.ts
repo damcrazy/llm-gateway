@@ -80,14 +80,15 @@ export function rangeStart(range: RangeValue): string {
   return new Date(Date.now() - ms).toISOString()
 }
 
-/** "Oct 1, 09:41:07 AM" */
-export function formatLogTime(value: string): string {
+/** "Oct 1, 09:41:07 AM" in the viewer's zone. */
+export function formatLogTime(value: string, timeZone: string): string {
   return new Date(value).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    timeZone,
   })
 }
 

@@ -40,8 +40,10 @@ export function formatPercent(value: number): string {
   return `${(value * 100).toFixed(value > 0 && value < 0.01 ? 2 : 1)}%`
 }
 
+/** "Oct 6, 11:42 AM" in the viewer's zone (see lib/time-zone.ts). */
 export function formatDateTime(
-  value: string | Date | null | undefined
+  value: string | Date | null | undefined,
+  timeZone: string
 ): string {
   if (!value) return "—"
   return new Date(value).toLocaleString("en-US", {
@@ -49,6 +51,7 @@ export function formatDateTime(
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone,
   })
 }
 

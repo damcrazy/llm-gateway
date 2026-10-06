@@ -77,6 +77,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
+import { useTimeZone } from "@/components/time-zone"
 import {
   formatDateTime,
   formatNumber,
@@ -102,6 +103,7 @@ export function SharingCard({
   shares: ShareView[]
   invites: InviteView[]
 }) {
+  const timeZone = useTimeZone()
   return (
     <Card data-tour="provider-sharing">
       <CardHeader>
@@ -143,7 +145,7 @@ export function SharingCard({
                   <ItemContent className="min-w-0">
                     <ItemTitle className="truncate">{share.email}</ItemTitle>
                     <ItemDescription>
-                      Since {formatDateTime(share.since)} · this month{" "}
+                      Since {formatDateTime(share.since, timeZone)} · this month{" "}
                       {formatNumber(share.requests)} request
                       {share.requests === 1 ? "" : "s"},{" "}
                       {formatUsd(share.costUsd)}

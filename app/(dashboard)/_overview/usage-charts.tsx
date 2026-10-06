@@ -14,6 +14,7 @@ import {
   YAxis,
 } from "recharts"
 
+import { useTimeZone } from "@/components/time-zone"
 import {
   Card,
   CardAction,
@@ -72,10 +73,19 @@ const ACTIVE_DOT = { r: 4, stroke: "var(--card)", strokeWidth: 2 }
 // Formatting
 // ---------------------------------------------------------------------------
 
-function formatTick(iso: string, interval: BucketInterval): string {
+// Hours in the viewer's zone; days are whole UTC days, as they're totalled.
+function formatTick(
+  iso: string,
+  interval: BucketInterval,
+  timeZone: string
+): string {
   const date = new Date(iso)
   return interval === "hour"
-    ? date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    ? date.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone,
+      })
     : date.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
@@ -86,7 +96,8 @@ function formatTick(iso: string, interval: BucketInterval): string {
 function formatBucket(
   iso: string,
   interval: BucketInterval,
-  inProgress: boolean
+  inProgress: boolean,
+  timeZone: string
 ): string {
   const date = new Date(iso)
   const label =
@@ -96,6 +107,7 @@ function formatBucket(
           day: "numeric",
           hour: "numeric",
           minute: "2-digit",
+          timeZone,
         })
       : `${date.toLocaleDateString("en-US", {
           weekday: "short",
@@ -144,7 +156,11 @@ function tooltipRow(config: ChartConfig, format: (value: number) => string) {
   }
 }
 
-function bucketLabel(data: SeriesPoint[], interval: BucketInterval) {
+function bucketLabel(
+  data: SeriesPoint[],
+  interval: BucketInterval,
+  timeZone: string
+) {
   const last = data.at(-1)?.bucket
   return function BucketLabel(
     _: unknown,
@@ -152,7 +168,7 @@ function bucketLabel(data: SeriesPoint[], interval: BucketInterval) {
   ) {
     const point = payload[0]?.payload as SeriesPoint | undefined
     return point
-      ? formatBucket(point.bucket, interval, point.bucket === last)
+      ? formatBucket(point.bucket, interval, point.bucket === last, timeZone)
       : null
   }
 }
@@ -197,6 +213,7 @@ function ChartCard({
 }) {
   const [view, setView] = useState<"chart" | "table">("chart")
   const hydrated = useHydrated()
+  const timeZone = useTimeZone()
 
   return (
     <Card className={cn("min-w-0", className)}>
@@ -257,7 +274,12 @@ function ChartCard({
                   .map(({ point, inProgress }) => (
                     <TableRow key={point.bucket}>
                       <TableCell className="pl-3 text-muted-foreground">
-                        {formatBucket(point.bucket, interval, inProgress)}
+                        {formatBucket(
+                          point.bucket,
+                          interval,
+                          inProgress,
+                          timeZone
+                        )}
                       </TableCell>
                       {columns.map((column) => (
                         <TableCell
@@ -294,6 +316,7 @@ function cadence(interval: BucketInterval) {
 
 /** Part-to-whole over time: stacked columns, errors in the status color. */
 function RequestsChart({ data, interval, className }: ChartProps) {
+  const timeZone = useTimeZone()
   return (
     <ChartCard
       title="Requests"
@@ -327,7 +350,9 @@ function RequestsChart({ data, interval, className }: ChartProps) {
             axisLine={false}
             tickMargin={8}
             minTickGap={24}
-            tickFormatter={(value: string) => formatTick(value, interval)}
+            tickFormatter={(value: string) =>
+              formatTick(value, interval, timeZone)
+            }
           />
           <YAxis
             tickLine={false}
@@ -340,7 +365,7 @@ function RequestsChart({ data, interval, className }: ChartProps) {
             content={
               <ChartTooltipContent
                 indicator="line"
-                labelFormatter={bucketLabel(data, interval)}
+                labelFormatter={bucketLabel(data, interval, timeZone)}
                 formatter={tooltipRow(requestsConfig, formatNumber)}
               />
             }
@@ -368,6 +393,7 @@ function RequestsChart({ data, interval, className }: ChartProps) {
 
 /** Single series trend: area with a light wash, no legend (the title names it). */
 function CostChart({ data, interval, className }: ChartProps) {
+  const timeZone = useTimeZone()
   return (
     <ChartCard
       title="Cost"
@@ -386,7 +412,9 @@ function CostChart({ data, interval, className }: ChartProps) {
             axisLine={false}
             tickMargin={8}
             minTickGap={24}
-            tickFormatter={(value: string) => formatTick(value, interval)}
+            tickFormatter={(value: string) =>
+              formatTick(value, interval, timeZone)
+            }
           />
           <YAxis
             tickLine={false}
@@ -398,7 +426,7 @@ function CostChart({ data, interval, className }: ChartProps) {
             content={
               <ChartTooltipContent
                 indicator="line"
-                labelFormatter={bucketLabel(data, interval)}
+                labelFormatter={bucketLabel(data, interval, timeZone)}
                 formatter={tooltipRow(costConfig, formatUsd)}
               />
             }
@@ -421,6 +449,7 @@ function CostChart({ data, interval, className }: ChartProps) {
 
 /** Two series on one shared token axis. */
 function TokensChart({ data, interval, className }: ChartProps) {
+  const timeZone = useTimeZone()
   return (
     <ChartCard
       title="Tokens"
@@ -442,7 +471,9 @@ function TokensChart({ data, interval, className }: ChartProps) {
             axisLine={false}
             tickMargin={8}
             minTickGap={24}
-            tickFormatter={(value: string) => formatTick(value, interval)}
+            tickFormatter={(value: string) =>
+              formatTick(value, interval, timeZone)
+            }
           />
           <YAxis
             tickLine={false}
@@ -455,7 +486,7 @@ function TokensChart({ data, interval, className }: ChartProps) {
             content={
               <ChartTooltipContent
                 indicator="line"
-                labelFormatter={bucketLabel(data, interval)}
+                labelFormatter={bucketLabel(data, interval, timeZone)}
                 formatter={tooltipRow(tokensConfig, formatCount)}
               />
             }

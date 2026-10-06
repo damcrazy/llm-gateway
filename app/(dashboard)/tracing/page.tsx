@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { requireMember } from "@/lib/auth"
 import { formatDateTime, formatRelative } from "@/lib/format"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { getTimeZone } from "@/lib/time-zone-server"
 
 import type { TraceExportView } from "./shared"
 import { TracingForm } from "./tracing-form"
@@ -15,6 +16,7 @@ export const metadata: Metadata = { title: "Tracing" }
 
 export default async function TracingPage() {
   const me = await requireMember()
+  const timeZone = await getTimeZone()
   const { data } = await supabaseAdmin()
     .from("trace_exports")
     .select(
@@ -67,7 +69,7 @@ export default async function TracingPage() {
             <AlertTitle>Exporting</AlertTitle>
             <AlertDescription>
               Last trace sent {formatRelative(view.lastSuccessAt)} (
-              {formatDateTime(view.lastSuccessAt)}).
+              {formatDateTime(view.lastSuccessAt, timeZone)}).
             </AlertDescription>
           </Alert>
         ) : null}

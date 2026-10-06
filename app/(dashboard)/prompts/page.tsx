@@ -26,6 +26,7 @@ import {
 import { requireMember } from "@/lib/auth"
 import { formatDateTime, formatRelative } from "@/lib/format"
 import { createClient } from "@/lib/supabase/server"
+import { getTimeZone } from "@/lib/time-zone-server"
 
 import { NewPromptDialog } from "./new-prompt-dialog"
 import { PROMPT_COLUMNS, type PromptInfo } from "./shared"
@@ -36,6 +37,7 @@ type PromptListRow = PromptInfo & { prompt_versions: { version: number }[] }
 
 export default async function PromptsPage() {
   const me = await requireMember()
+  const timeZone = await getTimeZone()
 
   // RLS: admins read every prompt, members only their own.
   const supabase = await createClient()
@@ -152,7 +154,7 @@ export default async function PromptsPage() {
                       </TableCell>
                       <TableCell
                         className="pr-6 whitespace-nowrap text-muted-foreground"
-                        title={formatDateTime(prompt.updated_at)}
+                        title={formatDateTime(prompt.updated_at, timeZone)}
                       >
                         {formatRelative(prompt.updated_at)}
                       </TableCell>

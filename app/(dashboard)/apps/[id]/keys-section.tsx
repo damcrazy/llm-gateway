@@ -42,9 +42,12 @@ const STATUS_BADGE: Record<
 export function KeysSection({
   appId,
   keys,
+  timeZone,
 }: {
   appId: string
   keys: ApiKeyListRow[]
+  /** The viewer's zone, for dates. */
+  timeZone: string
 }) {
   return (
     <div className="grid min-w-0 gap-4">
@@ -95,7 +98,7 @@ export function KeysSection({
                         {maskKey(key)}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {formatDateTime(key.created_at)}
+                        {formatDateTime(key.created_at, timeZone)}
                         {key.created_by && (
                           <span className="block text-xs">
                             by {key.created_by}
@@ -107,7 +110,7 @@ export function KeysSection({
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {key.expires_at
-                          ? formatDateTime(key.expires_at)
+                          ? formatDateTime(key.expires_at, timeZone)
                           : "Never"}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">

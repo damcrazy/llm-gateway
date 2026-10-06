@@ -29,6 +29,7 @@ import {
   ItemTitle,
 } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
+import { useTimeZone } from "@/components/time-zone"
 import { formatDateTime, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -80,6 +81,7 @@ export function AlertList({
   alerts: AlertItem[]
   appNames: Record<string, string>
 }) {
+  const timeZone = useTimeZone()
   if (!alerts.length) {
     return (
       <Empty className="border border-dashed">
@@ -117,7 +119,7 @@ export function AlertList({
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <time
                 dateTime={alert.createdAt}
-                title={formatDateTime(alert.createdAt)}
+                title={formatDateTime(alert.createdAt, timeZone)}
               >
                 {formatRelative(alert.createdAt)}
               </time>

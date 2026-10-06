@@ -25,6 +25,7 @@ import { requireMember, userHasPassword, verifiedTotpFactors } from "@/lib/auth"
 import { env } from "@/lib/env"
 import { formatDateTime } from "@/lib/format"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { getTimeZone } from "@/lib/time-zone-server"
 
 import {
   AddAuthenticatorButton,
@@ -43,6 +44,7 @@ const ROLE_LABELS = {
 
 export default async function AccountPage() {
   const me = await requireMember()
+  const timeZone = await getTimeZone()
   const [factors, { data: userData }, hasPassword] = await Promise.all([
     verifiedTotpFactors(me.id),
     supabaseAdmin().auth.admin.getUserById(me.id),
@@ -135,7 +137,7 @@ export default async function AccountPage() {
                     {factor.friendly_name || "Authenticator app"}
                   </ItemTitle>
                   <ItemDescription>
-                    Added {formatDateTime(factor.created_at)}
+                    Added {formatDateTime(factor.created_at, timeZone)}
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>

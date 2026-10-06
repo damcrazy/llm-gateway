@@ -27,6 +27,7 @@ import { requireMember } from "@/lib/auth"
 import type { AppRow, UsageBreakdownRow } from "@/lib/db/types"
 import { formatDateTime, formatNumber, formatUsd } from "@/lib/format"
 import { createClient } from "@/lib/supabase/server"
+import { getTimeZone } from "@/lib/time-zone-server"
 
 import { daysAgo, keyStatus, type ApiKeyListRow } from "./_lib"
 import { NewAppDialog } from "./new-app-dialog"
@@ -35,6 +36,7 @@ export const metadata: Metadata = { title: "Apps & keys" }
 
 export default async function AppsPage() {
   const me = await requireMember()
+  const timeZone = await getTimeZone()
   const supabase = await createClient()
 
   const [appsResult, keysResult, usageResult] = await Promise.all([
@@ -161,7 +163,7 @@ export default async function AppsPage() {
                         {formatUsd(Number(stats?.cost_usd ?? 0))}
                       </TableCell>
                       <TableCell className="pr-6 text-muted-foreground">
-                        {formatDateTime(app.created_at)}
+                        {formatDateTime(app.created_at, timeZone)}
                       </TableCell>
                     </TableRow>
                   )

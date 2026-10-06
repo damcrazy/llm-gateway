@@ -25,6 +25,7 @@ import {
 import { requireMember } from "@/lib/auth"
 import { formatDateTime, formatRelative } from "@/lib/format"
 import { createClient } from "@/lib/supabase/server"
+import { getTimeZone } from "@/lib/time-zone-server"
 
 import { AuditDetails, AuditFilters } from "./audit-controls"
 import { AREAS, PAGE_SIZE, type AuditArea } from "./shared"
@@ -66,6 +67,7 @@ function targetHref(row: AuditRow): string | null {
 
 export default async function AuditPage({ searchParams }: Props) {
   const me = await requireMember()
+  const timeZone = await getTimeZone()
   const params = await searchParams
   const areaParam = first(params.area)
   const area = AREAS.some((a) => a.value === areaParam)
@@ -167,7 +169,7 @@ export default async function AuditPage({ searchParams }: Props) {
                     <TableRow key={row.id}>
                       <TableCell
                         className="pl-6 whitespace-nowrap text-muted-foreground"
-                        title={formatDateTime(row.created_at)}
+                        title={formatDateTime(row.created_at, timeZone)}
                       >
                         {formatRelative(row.created_at)}
                       </TableCell>

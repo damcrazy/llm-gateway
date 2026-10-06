@@ -88,6 +88,7 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
+import { useTimeZone } from "@/components/time-zone"
 import { formatDateTime, formatRelative } from "@/lib/format"
 import {
   PROMPT_SLUG_PATTERN,
@@ -755,6 +756,7 @@ function VersionsCard({
   selected: number | null
   onOpen: (version: number) => void
 }) {
+  const timeZone = useTimeZone()
   const [pending, startTransition] = useTransition()
   const [target, setTarget] = useState<number | "latest" | null>(null)
   const latest = versions[0]?.version ?? 0
@@ -822,7 +824,7 @@ function VersionsCard({
                     </ItemDescription>
                     <p
                       className="truncate text-xs text-muted-foreground"
-                      title={formatDateTime(version.created_at)}
+                      title={formatDateTime(version.created_at, timeZone)}
                     >
                       {version.created_by ? `${version.created_by} · ` : ""}
                       {formatRelative(version.created_at)}

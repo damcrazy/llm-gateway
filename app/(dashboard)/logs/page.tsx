@@ -28,6 +28,7 @@ import { requireMember } from "@/lib/auth"
 import type { RequestLogRow } from "@/lib/db/types"
 import { formatNumber } from "@/lib/format"
 import { createClient } from "@/lib/supabase/server"
+import { getTimeZone } from "@/lib/time-zone-server"
 
 import {
   DASHBOARD_APP,
@@ -51,6 +52,7 @@ type Props = {
 
 export default async function LogsPage({ searchParams }: Props) {
   await requireMember()
+  const timeZone = await getTimeZone()
   const filters = parseFilters(await searchParams)
   const supabase = await createClient()
 
@@ -120,7 +122,7 @@ export default async function LogsPage({ searchParams }: Props) {
     const app = row.app_id ? appById.get(row.app_id) : undefined
     return {
       ...row,
-      timeLabel: formatLogTime(row.created_at),
+      timeLabel: formatLogTime(row.created_at, timeZone),
       appName: row.app_id ? (app?.name ?? "Deleted app") : "Dashboard",
       appSlug: app?.slug ?? null,
       routeName: row.route_id ? (routeById.get(row.route_id) ?? null) : null,

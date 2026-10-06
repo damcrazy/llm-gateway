@@ -53,6 +53,7 @@ import type {
 } from "@/lib/db/types"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
+import { getTimeZone } from "@/lib/time-zone-server"
 
 import {
   API_KEY_COLUMNS,
@@ -97,6 +98,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function AppPage({ params, searchParams }: Props) {
   await requireMember()
+  const timeZone = await getTimeZone()
   const { id } = await params
   if (!isUuid(id)) notFound()
   const { tab } = await searchParams
@@ -307,7 +309,7 @@ export default async function AppPage({ params, searchParams }: Props) {
 
         <TabsContent value="keys" className="min-w-0">
           <PageTour id="app-keys" />
-          <KeysSection appId={app.id} keys={keys} />
+          <KeysSection appId={app.id} keys={keys} timeZone={timeZone} />
         </TabsContent>
 
         <TabsContent value="models" className="min-w-0">
