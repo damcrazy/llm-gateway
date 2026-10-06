@@ -58,8 +58,17 @@ export interface BucketModel {
   slug: string
   /** Display name, or the upstream model id. */
   name: string
+  /** Provider label, with who shared it if it isn't the app owner's. */
   provider: string
-  /** From the app owner's own (private) provider. */
+  providerId: string
+  providerName: string
+  /** The provider's slug, the first part of the model slug. */
+  providerSlug: string
+  /** Whose provider: the app owner's, shared with them by invite, or the gateway's. */
+  source: "own" | "shared" | "gateway"
+  /** Who shared it, when source is "shared". */
+  sharedBy: string | null
+  /** Not a gateway provider: the owner's own, or shared with them. */
   own: boolean
   kind: ModelKind
   capabilities: Capability[]

@@ -165,7 +165,7 @@ export const APPS_TOURS: TourDefinition[] = [
         target: "app-library",
         side: "top",
         title: "Models you can use",
-        body: "Every model your account can call, with prices and this app's usage this month. Drag a row onto a bucket, or use <b>Add</b>. Search, or filter by where models come from and by price, to find what you need.",
+        body: "Every model your account can call, grouped by provider, with prices and this app's usage this month. The same model from two providers sits under each one, so you can tell them apart; click a provider to collapse it. Drag a row onto a bucket, or use <b>Add</b>.",
       },
       {
         target: "app-library-buckets",

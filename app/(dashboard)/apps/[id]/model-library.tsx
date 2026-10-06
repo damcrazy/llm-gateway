@@ -1,7 +1,13 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { CheckIcon, GripVerticalIcon, PlusIcon, SearchIcon } from "lucide-react"
+import {
+  CheckIcon,
+  ChevronRightIcon,
+  GripVerticalIcon,
+  PlusIcon,
+  SearchIcon,
+} from "lucide-react"
 
 import { Button } from "@/components/animate-ui/components/buttons/button"
 import {
@@ -44,6 +50,7 @@ import {
 } from "@/components/ui/table"
 import { formatCompact, formatUsd } from "@/lib/format"
 import { countByTier, priceTier } from "@/lib/pricing"
+import { cn } from "@/lib/utils"
 
 import { MAX_BUCKET_MODELS, MAX_BUCKETS } from "../_lib"
 import { CapabilityIcons, StatusDot } from "./buckets-board"
@@ -57,6 +64,53 @@ interface BucketSummary {
 
 const tierOf = (model: BucketModel) =>
   priceTier(model.inputPrice, model.outputPrice)
+
+interface ProviderGroup {
+  id: string
+  name: string
+  slug: string
+  source: BucketModel["source"]
+  sharedBy: string | null
+  models: BucketModel[]
+  requests: number
+  costUsd: number
+}
+
+const SOURCE_ORDER: Record<BucketModel["source"], number> = {
+  own: 0,
+  shared: 1,
+  gateway: 2,
+}
+
+/** One group per provider: yours first, then shared with you, then the gateway's. */
+function groupByProvider(models: BucketModel[]): ProviderGroup[] {
+  const groups = new Map<string, ProviderGroup>()
+  for (const model of models) {
+    let group = groups.get(model.providerId)
+    if (!group) {
+      group = {
+        id: model.providerId,
+        name: model.providerName,
+        slug: model.providerSlug,
+        source: model.source,
+        sharedBy: model.sharedBy,
+        models: [],
+        requests: 0,
+        costUsd: 0,
+      }
+      groups.set(model.providerId, group)
+    }
+    group.models.push(model)
+    group.requests += model.usage?.requests ?? 0
+    group.costUsd += model.usage?.costUsd ?? 0
+  }
+  return [...groups.values()].sort(
+    (a, b) =>
+      SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source] ||
+      b.requests - a.requests ||
+      a.name.localeCompare(b.name)
+  )
+}
 
 /**
  * Models the app's owner may use, with this app's usage this month. Drag a
@@ -85,8 +139,7 @@ export function ModelLibrary({
       .filter((model) => allowed.has(model.id))
       .sort(
         (a, b) =>
-          // Your own providers first, then the most used.
-          Number(b.own) - Number(a.own) ||
+          // Most used first, within each provider's group.
           (b.usage?.requests ?? 0) - (a.usage?.requests ?? 0) ||
           a.slug.localeCompare(b.slug)
       )
@@ -114,6 +167,22 @@ export function ModelLibrary({
     () => (tier === "all" ? scoped : scoped.filter((m) => tierOf(m) === tier)),
     [scoped, tier]
   )
+
+  const groups = useMemo(() => groupByProvider(visible), [visible])
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  // While searching, every match shows, even in a collapsed group.
+  const searching = search.trim() !== ""
+  const isOpen = (id: string) => searching || !collapsed.has(id)
+  const allCollapsed = groups.every((group) => collapsed.has(group.id))
+
+  function toggleGroup(id: string) {
+    setCollapsed((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const bucketsByModel = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -162,6 +231,22 @@ export function ModelLibrary({
             onChange={setTier}
             counts={countByTier(scoped, tierOf)}
           />
+          {groups.length > 1 && !searching && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="sm:ml-auto"
+              onClick={() =>
+                setCollapsed(
+                  allCollapsed
+                    ? new Set()
+                    : new Set(groups.map((group) => group.id))
+                )
+              }
+            >
+              {allCollapsed ? "Expand all" : "Collapse all"}
+            </Button>
+          )}
         </div>
         <Table>
           <TableHeader>
@@ -179,92 +264,108 @@ export function ModelLibrary({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visible.map((model) => {
-              const inBuckets = bucketsByModel.get(model.id) ?? []
+            {groups.map((group) => {
+              const open = isOpen(group.id)
               return (
-                <TableRow
-                  key={model.id}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData(MODEL_DRAG_TYPE, model.id)
-                    event.dataTransfer.setData("text/plain", model.slug)
-                    event.dataTransfer.effectAllowed = "copy"
-                  }}
-                  className="cursor-grab active:cursor-grabbing"
+                <ProviderRows
+                  key={group.id}
+                  group={group}
+                  open={open}
+                  onToggle={() => toggleGroup(group.id)}
                 >
-                  <TableCell className="pl-4 text-muted-foreground">
-                    <GripVerticalIcon className="size-4" aria-hidden />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <StatusDot model={model} />
-                      <span className="font-medium">{model.name}</span>
-                      {model.own && (
-                        <Badge variant="secondary" className="font-normal">
-                          Your provider
-                        </Badge>
-                      )}
-                      {model.kind === "embedding" && (
-                        <Badge variant="outline" className="font-normal">
-                          embedding
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="font-mono text-xs text-muted-foreground">
-                      {model.slug}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    <CapabilityIcons capabilities={model.capabilities} />
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground tabular-nums">
-                    {model.contextWindow
-                      ? formatCompact(model.contextWindow)
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <ModelPrice
-                      input={model.inputPrice}
-                      output={model.outputPrice}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right text-xs tabular-nums">
-                    {model.usage?.requests ? (
-                      <>
-                        <div className="font-medium">
-                          {formatUsd(model.usage.costUsd)}
-                        </div>
-                        <div className="text-muted-foreground">
-                          {formatCompact(model.usage.requests)} req ·{" "}
-                          {formatCompact(model.usage.tokens)} tok
-                        </div>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex max-w-48 flex-wrap gap-1">
-                      {inBuckets.map((name) => (
-                        <Badge
-                          key={name}
-                          variant="secondary"
-                          className="font-mono font-normal"
+                  {open &&
+                    group.models.map((model) => {
+                      const inBuckets = bucketsByModel.get(model.id) ?? []
+                      return (
+                        <TableRow
+                          key={model.id}
+                          draggable
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData(
+                              MODEL_DRAG_TYPE,
+                              model.id
+                            )
+                            event.dataTransfer.setData("text/plain", model.slug)
+                            event.dataTransfer.effectAllowed = "copy"
+                          }}
+                          className="cursor-grab active:cursor-grabbing"
                         >
-                          {name}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="pr-6 text-right">
-                    <AddToBucket
-                      model={model}
-                      buckets={buckets}
-                      onAdd={(key) => onAddModel(key, model.id)}
-                      onCreateBucket={onCreateBucket}
-                    />
-                  </TableCell>
-                </TableRow>
+                          <TableCell className="pl-4 text-muted-foreground">
+                            <GripVerticalIcon className="size-4" aria-hidden />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              <StatusDot model={model} />
+                              <span className="font-medium">{model.name}</span>
+                              {model.kind === "embedding" && (
+                                <Badge
+                                  variant="outline"
+                                  className="font-normal"
+                                >
+                                  embedding
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="font-mono text-xs text-muted-foreground">
+                              {model.slug}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            <CapabilityIcons
+                              capabilities={model.capabilities}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground tabular-nums">
+                            {model.contextWindow
+                              ? formatCompact(model.contextWindow)
+                              : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <ModelPrice
+                              input={model.inputPrice}
+                              output={model.outputPrice}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right text-xs tabular-nums">
+                            {model.usage?.requests ? (
+                              <>
+                                <div className="font-medium">
+                                  {formatUsd(model.usage.costUsd)}
+                                </div>
+                                <div className="text-muted-foreground">
+                                  {formatCompact(model.usage.requests)} req ·{" "}
+                                  {formatCompact(model.usage.tokens)} tok
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex max-w-48 flex-wrap gap-1">
+                              {inBuckets.map((name) => (
+                                <Badge
+                                  key={name}
+                                  variant="secondary"
+                                  className="font-mono font-normal"
+                                >
+                                  {name}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="pr-6 text-right">
+                            <AddToBucket
+                              model={model}
+                              buckets={buckets}
+                              onAdd={(key) => onAddModel(key, model.id)}
+                              onCreateBucket={onCreateBucket}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                </ProviderRows>
               )
             })}
             {visible.length === 0 && (
@@ -283,6 +384,60 @@ export function ModelLibrary({
         </Table>
       </CardContent>
     </Card>
+  )
+}
+
+/** A provider's header row, which collapses its models, then the models. */
+function ProviderRows({
+  group,
+  open,
+  onToggle,
+  children,
+}: {
+  group: ProviderGroup
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  const count = group.models.length
+  return (
+    <>
+      <TableRow className="bg-muted/40 hover:bg-muted/40">
+        <TableCell colSpan={8} className="py-1.5 pr-6 pl-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={open}
+              onClick={onToggle}
+              className="gap-1.5 px-2 font-medium"
+            >
+              <ChevronRightIcon
+                className={cn("transition-transform", open && "rotate-90")}
+                aria-hidden
+              />
+              {group.name}
+            </Button>
+            <span className="font-mono text-xs text-muted-foreground">
+              {group.slug}
+            </span>
+            <Badge variant="secondary" className="font-normal">
+              {group.source === "own"
+                ? "Your provider"
+                : group.source === "shared"
+                  ? `Shared by ${group.sharedBy}`
+                  : "Gateway"}
+            </Badge>
+            <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+              {count} {count === 1 ? "model" : "models"}
+              {group.requests > 0 &&
+                ` · ${formatUsd(group.costUsd)} this month`}
+            </span>
+          </div>
+        </TableCell>
+      </TableRow>
+      {children}
+    </>
   )
 }
 

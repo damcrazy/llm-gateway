@@ -155,7 +155,9 @@ export default async function AppPage({ params, searchParams }: Props) {
       .from("model_health")
       .select("model_id, cooldown_until, consecutive_failures"),
     // Members can't read providers; only names and on/off state are needed.
-    supabaseAdmin().from("providers").select("id, name, enabled, owner_email"),
+    supabaseAdmin()
+      .from("providers")
+      .select("id, name, slug, enabled, owner_email"),
     getOrigin(),
   ])
 
@@ -215,6 +217,7 @@ export default async function AppPage({ params, searchParams }: Props) {
     providers: (providersResult.data ?? []) as {
       id: string
       name: string
+      slug: string
       enabled: boolean
       owner_email: string | null
     }[],
@@ -393,6 +396,7 @@ function buildBucketsData({
   providers: {
     id: string
     name: string
+    slug: string
     enabled: boolean
     owner_email: string | null
   }[]
@@ -463,14 +467,20 @@ function buildBucketsData({
     if (model.enabled && provider?.enabled && permitted) addable.push(model.id)
 
     const used = usageById.get(model.id)
+    const sharedBy =
+      ownerEmail && ownerEmail !== app.owner_email ? ownerEmail : null
     return {
       id: model.id,
       slug: model.slug,
       name: model.display_name || model.model_id,
-      provider:
-        ownerEmail && ownerEmail !== app.owner_email
-          ? `${provider?.name ?? "Unknown provider"} (shared by ${ownerEmail})`
-          : (provider?.name ?? "Unknown provider"),
+      provider: sharedBy
+        ? `${provider?.name ?? "Unknown provider"} (shared by ${sharedBy})`
+        : (provider?.name ?? "Unknown provider"),
+      providerId: model.provider_id,
+      providerName: provider?.name ?? "Unknown provider",
+      providerSlug: provider?.slug ?? model.slug.split("/")[0]!,
+      source: sharedBy ? "shared" : ownerEmail ? "own" : "gateway",
+      sharedBy,
       own: ownerEmail !== null,
       kind: model.kind,
       capabilities: model.capabilities ?? [],
