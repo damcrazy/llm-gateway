@@ -25,8 +25,19 @@ export class UpstreamError extends Error {
     readonly options: {
       retryAfterMs?: number
       body?: string
-      /** "output": the answer failed the structured-output guard. */
-      kind?: "http" | "network" | "timeout" | "config" | "stream" | "output"
+      /**
+       * "output": the answer failed the structured-output guard.
+       * "mismatch": the answer doesn't fit the request, e.g. embeddings of
+       * another size than `dimensions`.
+       */
+      kind?:
+        | "http"
+        | "network"
+        | "timeout"
+        | "config"
+        | "stream"
+        | "output"
+        | "mismatch"
     } = {}
   ) {
     super(message)

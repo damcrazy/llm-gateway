@@ -622,6 +622,44 @@ async function* toChunks(
   }
 }
 
+// Sizes Bedrock's embedding models accept, per option (see @ai-sdk/amazon-bedrock).
+const TITAN_DIMENSIONS = [256, 512, 1024]
+const NOVA_DIMENSIONS = [256, 384, 1024, 3072]
+const COHERE_DIMENSIONS = [256, 512, 1024, 1536]
+
+/**
+ * OpenAI's `dimensions` in each provider's own option. Without it, Google
+ * returns full-size vectors whatever the client asked for. A size a model
+ * doesn't support is left out; the gateway then rejects the answer's size
+ * and tries the next model (executeEmbeddings).
+ */
+function embeddingOptions(
+  type: ProviderRuntime["type"],
+  dimensions: number | undefined
+): SharedV4ProviderOptions | undefined {
+  if (!dimensions) return undefined
+  switch (type) {
+    case "google":
+      return { google: { outputDimensionality: dimensions } }
+    case "vertex":
+      return { vertex: { outputDimensionality: dimensions } }
+    case "bedrock": {
+      const options = {
+        ...(TITAN_DIMENSIONS.includes(dimensions) ? { dimensions } : {}),
+        ...(NOVA_DIMENSIONS.includes(dimensions)
+          ? { embeddingDimension: dimensions }
+          : {}),
+        ...(COHERE_DIMENSIONS.includes(dimensions)
+          ? { outputDimension: dimensions }
+          : {}),
+      }
+      return Object.keys(options).length ? { bedrock: options } : undefined
+    }
+    default:
+      return undefined
+  }
+}
+
 export const aiSdkAdapter: ProviderAdapter = {
   async chat(request, ctx: AdapterContext): Promise<ChatResult> {
     const model = factoryFor(ctx.model.provider).language(ctx.model.model_id)
@@ -659,9 +697,14 @@ export const aiSdkAdapter: ProviderAdapter = {
       typeof value === "string" ? value : JSON.stringify(value)
     )
     try {
-      const result = await factory
-        .embedding(ctx.model.model_id)
-        .doEmbed({ values, abortSignal: ctx.signal })
+      const result = await factory.embedding(ctx.model.model_id).doEmbed({
+        values,
+        abortSignal: ctx.signal,
+        providerOptions: embeddingOptions(
+          ctx.model.provider.type,
+          request.dimensions
+        ),
+      })
       const tokens = result.usage?.tokens ?? 0
       return {
         object: "list",

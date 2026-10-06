@@ -15,6 +15,7 @@ import {
 import { adapterFor } from "./adapters"
 import type { MediaPath } from "./adapters/types"
 import { getSnapshot, type GatewaySnapshot, type ModelRuntime } from "./config"
+import { embeddingInputCount, embeddingsProblem } from "./embeddings-check"
 import {
   ClientAbortError,
   GatewayError,
@@ -333,6 +334,13 @@ function finalError(
   }
   const last = attempts.at(-1)
   const where = last ? ` (${last.provider} · ${last.model})` : ""
+  if (lastError.kind === "mismatch") {
+    return new GatewayError(
+      502,
+      `No model returned what the request asked for. Last${where}: ${lastError.message}`,
+      "upstream_response_mismatch"
+    )
+  }
   if (lastError.kind === "output") {
     return new GatewayError(
       502,
@@ -747,11 +755,19 @@ export async function executeEmbeddings(options: {
     resolution,
     recorder,
     options.signal,
-    (candidate, ctx) =>
-      adapterFor(candidate.provider.type).embeddings(
+    async (candidate, ctx) => {
+      const response = await adapterFor(candidate.provider.type).embeddings(
         { ...request, model: candidate.model_id },
         { model: candidate, signal: ctx.signal }
       )
+      const problem = embeddingsProblem(
+        response,
+        embeddingInputCount(request.input),
+        request.dimensions
+      )
+      if (problem) throw new UpstreamError(problem, null, { kind: "mismatch" })
+      return response
+    }
   )
   const inputs = Array.isArray(request.input) ? request.input : [request.input]
   const prompt = value.usage?.prompt_tokens

@@ -284,6 +284,13 @@ Turn on **Check structured output** in an app's Settings to have the gateway che
 - If no model gives a valid answer, the client gets a 502 `invalid_structured_output`.
 - These failures don't affect a model's health.
 
+### Embeddings
+
+`POST /v1/embeddings` (OpenAI format) works with every provider that has embedding models, and keeps a bucket's answers consistent:
+- `dimensions` reaches every provider: as `outputDimensionality` for Google AI Studio and Vertex, and for Bedrock's Titan, Nova and Cohere models when it's a size they offer.
+- An answer with vectors of another size than `dimensions`, or one vector too few, counts as a failed attempt: the next model in the bucket answers instead. It isn't held against the model's health. If none fits, the client gets a 502 `upstream_response_mismatch`, never vectors of the wrong size.
+- Vectors are passed on as the provider returns them, never truncated or re-normalized.
+
 ### Limits, privacy and tags
 
 **Limits** (app **Settings**, and **Limits** on each API key):

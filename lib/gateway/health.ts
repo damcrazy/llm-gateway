@@ -63,6 +63,10 @@ export function decideOnFailure(
   // this model once more, without counting it against the model's health.
   if (error.kind === "output")
     return { failover: true, cooldownSeconds: 0, transient: true }
+  // An answer that can't fit the request (say, the wrong embedding size) would
+  // be the same again: try elsewhere. The model is fine for other requests.
+  if (error.kind === "mismatch")
+    return { failover: true, cooldownSeconds: 0, transient: false }
   if (status == null)
     return { failover: true, cooldownSeconds: backoff, transient: true }
   if (status === 429) {
