@@ -290,6 +290,8 @@ Turn on **Check structured output** in an app's Settings to have the gateway che
 - `dimensions` reaches every provider: as `outputDimensionality` for Google AI Studio and Vertex, and for Bedrock's Titan, Nova and Cohere models when it's a size they offer.
 - An answer with vectors of another size than `dimensions`, or one vector too few, counts as a failed attempt: the next model in the bucket answers instead. It isn't held against the model's health. If none fits, the client gets a 502 `upstream_response_mismatch`, never vectors of the wrong size.
 - Vectors are passed on as the provider returns them, never truncated or re-normalized.
+- Responses follow OpenAI's shape whatever the provider sends: every vector has its `index`, and `usage` is always there.
+- Google's embedding API reports no token counts, and some providers report 0. The gateway then estimates the tokens (about 4 characters each), so usage and cost aren't counted as zero; the logs mark these as estimated.
 
 ### Limits, privacy and tags
 

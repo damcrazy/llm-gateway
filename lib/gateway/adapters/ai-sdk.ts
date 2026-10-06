@@ -705,7 +705,8 @@ export const aiSdkAdapter: ProviderAdapter = {
           request.dimensions
         ),
       })
-      const tokens = result.usage?.tokens ?? 0
+      // Google reports no token count; the gateway estimates it then.
+      const tokens = result.usage?.tokens
       return {
         object: "list",
         model: ctx.model.model_id,
@@ -714,8 +715,10 @@ export const aiSdkAdapter: ProviderAdapter = {
           index,
           embedding,
         })),
-        usage: { prompt_tokens: tokens, total_tokens: tokens },
-      }
+        ...(tokens == null
+          ? {}
+          : { usage: { prompt_tokens: tokens, total_tokens: tokens } }),
+      } as EmbeddingsResponse
     } catch (error) {
       throw toUpstreamError(error)
     }

@@ -15,7 +15,13 @@ import {
 import { adapterFor } from "./adapters"
 import type { MediaPath } from "./adapters/types"
 import { getSnapshot, type GatewaySnapshot, type ModelRuntime } from "./config"
-import { embeddingInputCount, embeddingsProblem } from "./embeddings-check"
+import {
+  embeddingInputCount,
+  embeddingsProblem,
+  estimateEmbeddingTokens,
+  normalizeEmbeddings,
+  reportedEmbeddingTokens,
+} from "./embeddings-check"
 import {
   ClientAbortError,
   GatewayError,
@@ -769,26 +775,17 @@ export async function executeEmbeddings(options: {
       return response
     }
   )
-  const inputs = Array.isArray(request.input) ? request.input : [request.input]
-  const prompt = value.usage?.prompt_tokens
+  const reported = reportedEmbeddingTokens(value, request.input)
+  const inputTokens = reported ?? estimateEmbeddingTokens(request.input)
   recorder.usage = {
-    inputTokens:
-      prompt ??
-      inputs.reduce<number>(
-        (sum, item) =>
-          sum +
-          estimateTokens(
-            typeof item === "string" ? item : JSON.stringify(item)
-          ),
-        0
-      ),
+    inputTokens,
     outputTokens: 0,
     cachedTokens: 0,
     reasoningTokens: 0,
-    estimated: prompt == null,
+    estimated: reported == null,
   }
   recorder.finish()
-  return { response: value, model }
+  return { response: normalizeEmbeddings(value, inputTokens), model }
 }
 
 /**
