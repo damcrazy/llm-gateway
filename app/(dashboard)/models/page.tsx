@@ -36,15 +36,16 @@ export default async function ModelsPage() {
       </>
     )
   }
-  // Members' own providers are theirs to manage, not part of this list.
-  const { models, providers } = await loadModelList({ sharedOnly: true })
+  // The gateway's providers and your own (hidden ones are yours); other
+  // members' providers are theirs to manage, not part of this list.
+  const { models, providers } = await loadModelList({ managedBy: me.email })
 
   return (
     <>
       <PageTour id="models" />
       <PageHeader
         title="Models"
-        description="Every model across the shared providers. Clients can call any enabled model by its slug, or through a route."
+        description="Every model on the providers you manage, visible to members or not. Clients can call any enabled model by its slug, or through a route."
         actions={
           <Button
             variant="outline"

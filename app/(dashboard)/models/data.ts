@@ -8,7 +8,7 @@ import type { ModelHealthSummary, ModelListItem } from "./shared"
 
 type ProviderSummary = Pick<
   ProviderRow,
-  "id" | "name" | "slug" | "type" | "enabled"
+  "id" | "name" | "slug" | "type" | "enabled" | "owner_email"
 >
 
 /**
@@ -18,8 +18,11 @@ type ProviderSummary = Pick<
 export async function loadModelList(
   options: {
     providerId?: string
-    /** Only shared providers (the admin Models page). */
-    sharedOnly?: boolean
+    /**
+     * Only the providers this admin manages: the gateway's shared ones and
+     * their own private (hidden) ones, not other members' (the Models page).
+     */
+    managedBy?: string
   } = {}
 ): Promise<{
   models: ModelListItem[]
@@ -33,11 +36,10 @@ export async function loadModelList(
 
   let providerQuery = supabase
     .from("providers")
-    .select("id, name, slug, type, enabled")
+    .select("id, name, slug, type, enabled, owner_email")
     .order("name")
   if (options.providerId)
     providerQuery = providerQuery.eq("id", options.providerId)
-  if (options.sharedOnly) providerQuery = providerQuery.is("owner_email", null)
 
   const [modelsResult, providersResult, healthResult, quotaResult] =
     await Promise.all([
@@ -57,7 +59,12 @@ export async function loadModelList(
     ).map((row) => [`${row.scope}:${row.scope_id}:${row.period}`, row.count])
   )
 
-  const providers = (providersResult.data ?? []) as ProviderSummary[]
+  const providers = ((providersResult.data ?? []) as ProviderSummary[]).filter(
+    (provider) =>
+      !options.managedBy ||
+      provider.owner_email === null ||
+      provider.owner_email === options.managedBy
+  )
   const providerById = new Map(
     providers.map((provider) => [provider.id, provider])
   )
