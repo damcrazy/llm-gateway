@@ -23,6 +23,7 @@ model order, default) buckets, and add or remove models in them.
 | Architecture | The server runs the agent loop; the browser applies the proposal through the board's existing state and auto-save. |
 | Streaming | Not in this version. The chat shows a "Thinking…" indicator per turn. |
 | Chat history | In memory while the page is open; gone on reload. |
+| Buckets mixing model kinds | Allowed, as today, but warned about loudly everywhere: on the board for every bucket (not only ones the assistant made), when a model is added by hand, and on the proposal card. See "Mixed-kind warning". |
 
 ## Non-goals
 
@@ -31,6 +32,78 @@ model order, default) buckets, and add or remove models in them.
 - Any change outside the current app (routes, providers, other apps).
 - A gateway-wide "system" model or new settings.
 - New database tables or migrations.
+
+## Mixed-kind warning
+
+This part ships first and stands on its own: it applies to every bucket,
+including ones built by hand.
+
+### What actually happens
+
+The router keeps only the models whose kind matches the request
+(`lib/gateway/router.ts`, the `usable` filter). In a bucket holding 3 chat
+models and 2 embedding models:
+
+- a chat request tries only the 3 chat models; the embedding models are
+  skipped, never used as fallbacks;
+- an embedding request tries only the 2 embedding models;
+- if all 3 chat models fail, the chat request fails, although the bucket
+  still has models in it.
+
+So a mixed bucket's fallback chain is shorter than it looks, silently.
+Mixing stays allowed, because one name serving two endpoints can be
+intentional (the default bucket answers `/v1/embeddings` calls that name no
+model), but it must never go unnoticed.
+
+### Shared helper
+
+`lib/bucket-kinds.ts` (pure, client-safe):
+
+```ts
+bucketKindMix(models: { id: string; name: string; kind: ModelKind }[])
+  -> null                                    // one kind (or empty): fine
+   | { primary: ModelKind;                   // kind of the first model, the one tried first
+       counts: Partial<Record<ModelKind, number>>;
+       offKind: { id: string; name: string; kind: ModelKind }[] }
+mixWarningText(bucketName, mix) -> { title: string; body: string }
+```
+
+Wording, built from the counts (example for 3 chat + 2 embedding):
+
+- Title: **"This bucket mixes chat and embedding models"**
+- Body: "Chat requests to `smart` only try its 3 chat models. The 2
+  embedding models are skipped, never used as fallbacks, so if the chat
+  models fail the request fails. Embedding requests do the reverse. Move
+  them into their own bucket."
+
+### On the board (every bucket)
+
+- **Lane banner:** a destructive `Alert` (red, alert icon) directly under
+  the lane header whenever `bucketKindMix` is not null. It stays until the
+  bucket holds a single kind.
+- **Off-kind cards:** each card whose kind differs from `primary` gets a
+  red dashed border and a red badge naming its kind ("Embedding model"),
+  with a tooltip: "Skipped for chat requests to this bucket".
+- **Lane header:** a small red "Mixed kinds" badge next to the bucket
+  name, so the problem shows even when the lane is scrolled out of view.
+- **When a model is added by hand** (drag from the table, the Add model
+  popover, or the library's Add button) and the bucket then mixes kinds:
+  a `toast.warning` naming the model and its kind, e.g. "Gemini Embedding 2
+  is an embedding model. Chat requests to smart will skip it."
+- **Add model popover:** options whose kind differs from the bucket's
+  primary kind show a red kind badge, so the mistake is visible before it's
+  made.
+
+### In the assistant
+
+- `applyOp` returns the mix as a warning for any bucket it leaves mixed.
+- The change tool's result states it in the same strong words, and the
+  system prompt says never to mix kinds unless the user explicitly asks
+  for one name serving both endpoints. When the agent gets this warning it
+  must fix the proposal or tell the user why it didn't.
+- **Proposal card:** if the proposal leaves any bucket mixed, the card
+  shows the same destructive `Alert` (one per affected bucket) above its
+  buttons, and **Apply** becomes a destructive-styled **Apply anyway**.
 
 ## User experience
 
@@ -50,7 +123,9 @@ model order, default) buckets, and add or remove models in them.
   2–5 clickable answers. Clicking one sends it as the user's next message;
   typing still works.
 - **Proposal card:** one per chat at a time. Lists each change in plain words,
-  with model names in try order, and **Discard** / **Apply** buttons. After
+  with model names in try order, and **Discard** / **Apply** buttons. A
+  proposal that leaves a bucket mixing kinds shows the mixed-kind warning
+  and **Apply anyway** (see "Mixed-kind warning"). After
   Apply it shows "Applied", listing any step that was skipped and why. After
   Discard it shows "Discarded".
 - **Footer:** a `Textarea` (Enter sends, Shift+Enter adds a new line, disabled
@@ -87,7 +162,8 @@ AssistantPanel (client)                    askBucketAssistant (server action)
 | `app/(dashboard)/apps/[id]/assistant-actions.ts` | `"use server"`. `getAssistantOptions(appId)` (picker contents) and `askBucketAssistant(appId, input)`. |
 | `app/(dashboard)/apps/[id]/assistant-panel.tsx` | Client. The Sheet, messages, proposal card, picker. |
 | `app/(dashboard)/apps/[id]/models-section.tsx` | Gains `applyAssistantOps(ops)` and passes the board snapshot and that callback to the panel. |
-| `app/(dashboard)/apps/[id]/buckets-board.tsx` | Gains the **Ask assistant** button. |
+| `app/(dashboard)/apps/[id]/buckets-board.tsx` | Gains the **Ask assistant** button, the mixed-kind lane banner, header badge, off-kind card styling, and kind badges in the Add model popover. |
+| `lib/bucket-kinds.ts` | Pure, client-safe. `bucketKindMix`, `mixWarningText`. |
 | `lib/gateway/run-as-app.ts` | Server. `runChatAsApp`: one non-streamed chat request run as an app (see "Running a model call"). |
 | `app/(dashboard)/apps/_access.ts` | Server. `requireAppAccess`, moved out of `apps/actions.ts` (see below). |
 
@@ -131,8 +207,8 @@ describeOp(op, modelName: (id) => string) -> string   // "Create bucket embed: 1
 - `modelOrder` must be a permutation of the bucket's current models.
 - Deleting the default bucket clears `defaultBucket`. Renaming it keeps it
   the default.
-- Not an error: mixing chat and embedding models in one bucket returns a
-  warning, which the assistant is told to heed.
+- Not an error: leaving a bucket with more than one model kind returns the
+  `mixWarningText` warning for that bucket (see "Mixed-kind warning").
 
 `ModelsSection` converts its keyed `Board` to `BucketsState` (the existing
 `toInput`) and back, regenerating item keys for changed buckets.
@@ -223,7 +299,10 @@ buckets", or a `describeOp` line for change tools.
   quality), and roughly how many fallbacks (default 2–4). Ask with
   `ask_user` when one of these isn't clear; ask at most two questions in a row.
 - Use only models returned by `list_models`. Never invent slugs.
-- Pick models of the right kind. Prefer healthy ones. Mix providers so one
+- Pick models of the right kind, and never mix kinds in one bucket unless
+  the user explicitly wants one name serving two endpoints; if a tool
+  result warns about mixed kinds, fix it or explain why not. Prefer healthy
+  ones. Mix providers so one
   outage doesn't take out the whole chain. Put the best fit first.
 - Suggest short, lowercase bucket names the user's code will call.
 - End with one or two sentences summarising the proposal.
@@ -292,6 +371,10 @@ refactor isn't required here.
 
 `bun test` unit tests in `tests/`:
 
+- `bucket-kinds.test.ts`: single kind and empty give null; primary is the
+  first model's kind; counts and `offKind`; wording for chat + embedding and
+  for three kinds; singular and plural ("1 embedding model").
+
 - `bucket-assistant-ops.test.ts`: every op type; each rule (name format,
   reserved name, duplicates, bucket and model limits, non-addable model,
   missing bucket, bad `modelOrder`, hedge range); default handling on delete
@@ -308,7 +391,8 @@ refactor isn't required here.
   - `pendingOps` are replayed, and a stale one is dropped with a note.
   - The proposal accumulates across turns.
 
-UI: render the panel and board with fake data on a temporary route,
+UI: render the panel and board (including a mixed bucket, to check the
+banner, header badge, off-kind cards and Add model badges) with fake data on a temporary route,
 screenshot it with headless Chrome, then delete the route. End to end: the
 user runs one real chat on a free tool-capable model in local dev, since
 sign-in needs their 2FA.
