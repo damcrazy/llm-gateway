@@ -19,6 +19,7 @@ import {
   PlusIcon,
   StarIcon,
   Trash2Icon,
+  TriangleAlertIcon,
   WrenchIcon,
   XIcon,
   type LucideIcon,
@@ -63,6 +64,7 @@ import {
   TooltipTrigger,
 } from "@/components/animate-ui/components/radix/tooltip"
 import { ModelPrice } from "@/components/model-price"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -113,7 +115,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
+import {
+  bucketKindMix,
+  kindModelLabel,
+  mixWarningText,
+} from "@/lib/bucket-kinds"
+import type { ModelKind } from "@/lib/db/types"
 import { formatCompact, formatUsd } from "@/lib/format"
+import { MODEL_KIND_LABELS } from "@/lib/model-kinds"
 import { CAPABILITY_LABELS, type Capability } from "@/lib/providers/catalog"
 import { cn } from "@/lib/utils"
 
@@ -421,6 +430,13 @@ function BucketColumn({
   const [renaming, setRenaming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const full = items.length >= MAX_BUCKET_MODELS
+  const mix = bucketKindMix(
+    items.flatMap((item) => {
+      const model = modelsById.get(item.modelId)
+      return model ? [{ id: model.id, name: model.name, kind: model.kind }] : []
+    })
+  )
+  const mixWarning = mix ? mixWarningText(name, mix) : null
 
   return (
     <KanbanColumn
@@ -461,10 +477,11 @@ function BucketColumn({
           </Button>
         </KanbanColumnHandle>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="truncate font-mono text-sm font-semibold">
               {name}
             </span>
+            {mix && <Badge variant="destructive">Mixed kinds</Badge>}
             {isDefault && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -498,6 +515,11 @@ function BucketColumn({
           disabled={full}
           modelsById={modelsById}
           addable={addable}
+          primaryKind={
+            items
+              .map((item) => modelsById.get(item.modelId)?.kind)
+              .find(Boolean) ?? null
+          }
           inBucket={new Set(items.map((item) => item.modelId))}
           onPick={(modelId) => onAddModel(bucketKey, modelId)}
         />
@@ -538,6 +560,18 @@ function BucketColumn({
         </DropdownMenu>
       </div>
 
+      {mixWarning && (
+        <Alert
+          variant="destructive"
+          className="border-destructive/50 bg-destructive/10"
+          data-tour="app-bucket-mixed"
+        >
+          <TriangleAlertIcon />
+          <AlertTitle>{mixWarning.title}</AlertTitle>
+          <AlertDescription>{mixWarning.body}</AlertDescription>
+        </Alert>
+      )}
+
       <p className="text-xs text-muted-foreground">{strategyHelp(settings)}</p>
 
       {/* Cards run left to right in the order they're tried; a long chain
@@ -555,6 +589,11 @@ function BucketColumn({
                   <ModelCardBody
                     model={model}
                     position={index + 1}
+                    skippedFor={
+                      mix && model.kind !== mix.primary
+                        ? mix.primary
+                        : undefined
+                    }
                     onRemove={() => onRemoveModel(bucketKey, item.key)}
                   />
                 ) : (
@@ -687,11 +726,14 @@ function strategyHelp(settings: BucketSettings) {
 export function ModelCardBody({
   model,
   position,
+  skippedFor,
   onRemove,
   overlay = false,
 }: {
   model: BucketModel
   position?: number
+  /** The bucket's primary kind, when this card is another kind. */
+  skippedFor?: ModelKind
   onRemove?: () => void
   overlay?: boolean
 }) {
@@ -701,7 +743,8 @@ export function ModelCardBody({
       className={cn(
         "group/card flex h-full flex-col rounded-lg border bg-card p-2.5 shadow-xs",
         overlay && "w-72 rotate-1 shadow-lg ring-2 ring-primary/30",
-        unavailable && "border-dashed opacity-70"
+        unavailable && "border-dashed opacity-70",
+        skippedFor && "border-dashed border-destructive"
       )}
     >
       <div className="flex items-start gap-2">
@@ -740,6 +783,20 @@ export function ModelCardBody({
             {model.source === "own" && " · your provider"}
             {model.kind === "embedding" && " · embedding"}
           </div>
+          {skippedFor && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="destructive" className="mt-1">
+                  <TriangleAlertIcon />
+                  {kindModelLabel(model.kind)}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                Skipped for {MODEL_KIND_LABELS[skippedFor].toLowerCase()}{" "}
+                requests to this bucket
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
         {onRemove && (
           <Button
@@ -917,12 +974,15 @@ function AddModelPopover({
   disabled,
   modelsById,
   addable,
+  primaryKind,
   inBucket,
   onPick,
 }: {
   disabled: boolean
   modelsById: Map<string, BucketModel>
   addable: string[]
+  /** The kind of the bucket's first model, if it has any. */
+  primaryKind: ModelKind | null
   inBucket: Set<string>
   onPick: (modelId: string) => void
 }) {
@@ -962,6 +1022,11 @@ function AddModelPopover({
                       {model.provider}
                     </div>
                   </div>
+                  {primaryKind && model.kind !== primaryKind && (
+                    <Badge variant="destructive">
+                      {kindModelLabel(model.kind)}
+                    </Badge>
+                  )}
                   <span className="text-xs">
                     <ModelPrice
                       input={model.inputPrice}

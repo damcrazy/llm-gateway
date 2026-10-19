@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
+import { offKindToast } from "@/lib/bucket-kinds"
+
 import { saveAppBuckets, type AppBucketsInput } from "../actions"
 import { BucketsBoard } from "./buckets-board"
 import type { BucketStrategy, BucketsData } from "./buckets-shared"
@@ -170,9 +172,20 @@ export function ModelsSection({
           ],
         },
       }))
-      toast.success(`Added ${nameOf(modelId)} to ${bucketName}`)
+      // Chat requests skip embedding models and vice versa: say so loudly.
+      const primary = items
+        .map((item) => modelsById.get(item.modelId)?.kind)
+        .find(Boolean)
+      const kind = modelsById.get(modelId)?.kind
+      if (primary && kind && kind !== primary) {
+        toast.warning(
+          offKindToast(nameOf(modelId), kind, bucketName ?? "", primary)
+        )
+      } else {
+        toast.success(`Added ${nameOf(modelId)} to ${bucketName}`)
+      }
     },
-    [update, nameOf]
+    [update, nameOf, modelsById]
   )
 
   const removeModel = useCallback(
