@@ -88,6 +88,18 @@ export const assistantTurnInputSchema = z.object({
 
 export type AssistantTurnInput = z.infer<typeof assistantTurnInputSchema>
 
+/**
+ * The last MAX_HISTORY messages, opening on a user message: some providers
+ * (Anthropic, Gemini) reject a conversation that starts with the assistant.
+ */
+export function trimHistory<T extends { role: "user" | "assistant" }>(
+  messages: T[]
+): T[] {
+  const window = messages.slice(-MAX_HISTORY)
+  const firstUser = window.findIndex((message) => message.role === "user")
+  return firstUser < 0 ? [] : window.slice(firstUser)
+}
+
 export interface AssistantProposal {
   ops: AssistantOp[]
   /** One plain sentence per op. */

@@ -5,7 +5,11 @@
 import type { BucketsData } from "@/app/(dashboard)/apps/[id]/buckets-shared"
 import type { ChatMessage, ChatTool } from "@/lib/gateway/types"
 
-import type { AssistantTurnInput, AssistantTurnResult } from "./contract"
+import {
+  trimHistory,
+  type AssistantTurnInput,
+  type AssistantTurnResult,
+} from "./contract"
 import { applyOps, describeOp, proposalWarnings } from "./ops"
 import { buildSystemPrompt } from "./prompt"
 import { createWorkspace, runTool, TOOLS } from "./tools"
@@ -78,7 +82,10 @@ export async function runAssistantTurn({
         notes,
       }),
     },
-    ...input.messages.map((m) => ({ role: m.role, content: m.content })),
+    ...trimHistory(input.messages).map((m) => ({
+      role: m.role,
+      content: m.content,
+    })),
   ]
 
   const steps: string[] = []

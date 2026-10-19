@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 
-import { assistantTurnInputSchema } from "@/lib/bucket-assistant/contract"
+import {
+  assistantTurnInputSchema,
+  trimHistory,
+} from "@/lib/bucket-assistant/contract"
 import {
   buildAssistantOptions,
   isAllowedRunsOn,
@@ -120,4 +123,24 @@ test("isAllowedRunsOn only accepts what's offered", () => {
   // A bucket deleted since the choice was remembered, a model no longer addable.
   expect(isAllowedRunsOn(options, "old-bucket")).toBe(false)
   expect(isAllowedRunsOn(options, "prov/locked")).toBe(false)
+})
+
+describe("trimHistory", () => {
+  const alternating = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      role: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
+      content: `m${i}`,
+    }))
+
+  test("keeps the last 20 messages, starting on a user message", () => {
+    // 11 exchanges plus the new question: the window would open on "assistant".
+    const trimmed = trimHistory(alternating(23))
+    expect(trimmed.length).toBeLessThanOrEqual(20)
+    expect(trimmed[0]!.role).toBe("user")
+    expect(trimmed.at(-1)!.content).toBe("m22")
+  })
+
+  test("leaves a short chat alone", () => {
+    expect(trimHistory(alternating(5))).toEqual(alternating(5))
+  })
 })

@@ -269,3 +269,17 @@ describe("assistantErrorMessage", () => {
     )
   })
 })
+
+test("the model never sees a conversation that opens with the assistant", async () => {
+  const { callModel, requests } = scripted(say("ok"))
+  await turn(callModel, {
+    messages: [
+      { role: "assistant", content: "Earlier answer" },
+      { role: "user", content: "and now?" },
+    ],
+  })
+  expect(requests[0]!.messages[1]).toEqual({
+    role: "user",
+    content: "and now?",
+  })
+})

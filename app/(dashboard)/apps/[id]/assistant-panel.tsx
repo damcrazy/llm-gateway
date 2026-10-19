@@ -32,8 +32,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import type { ActionResult } from "@/lib/actions"
 import {
-  MAX_HISTORY,
   MAX_MESSAGE_CHARS,
+  trimHistory,
   type AssistantProposal,
   type AssistantTurnInput,
   type AssistantTurnResult,
@@ -100,7 +100,7 @@ function firstOption(options: AssistantOptions): string | null {
 
 /** The plain-text history the server gets: no tool calls, no errors. */
 function history(entries: Entry[]): AssistantTurnInput["messages"] {
-  return entries
+  const messages = entries
     .flatMap((entry): AssistantTurnInput["messages"] => {
       if (entry.role === "user")
         return [{ role: "user", content: entry.content }]
@@ -113,7 +113,7 @@ function history(entries: Entry[]): AssistantTurnInput["messages"] {
       return []
     })
     .map((m) => ({ ...m, content: m.content.slice(0, MAX_MESSAGE_CHARS) }))
-    .slice(-MAX_HISTORY)
+  return trimHistory(messages)
 }
 
 /**
