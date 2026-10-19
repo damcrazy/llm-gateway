@@ -11,13 +11,14 @@ import {
   providerVisible,
 } from "@/lib/access"
 import { audit } from "@/lib/audit"
-import { requireMember, type SessionMember } from "@/lib/auth"
+import { requireMember } from "@/lib/auth"
 import { generateApiKey } from "@/lib/crypto"
 import type { MemberRow, ModelRow } from "@/lib/db/types"
 import { invalidateApiKeyCache } from "@/lib/gateway/auth"
 import { loadReach } from "@/lib/provider-reach"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
+import { isDenied, requireAppAccess } from "./_access"
 import {
   BUCKET_NAME_PATTERN,
   EXPIRY_OPTIONS,
@@ -57,34 +58,6 @@ const createAppSchema = z.object({
 
 function firstIssue(error: z.ZodError): string {
   return error.issues[0]?.message ?? "Invalid input"
-}
-
-/**
- * Members may only touch their own apps; admins may touch any. Returns the
- * caller, or an error result when the app isn't theirs (or doesn't exist).
- */
-async function requireAppAccess(
-  appId: string
-): Promise<SessionMember | { ok: false; error: string }> {
-  const me = await requireMember()
-  if (!idSchema.safeParse(appId).success)
-    return { ok: false, error: "Unknown app" }
-  if (me.isAdmin) return me
-  const { data } = await supabaseAdmin()
-    .from("apps")
-    .select("owner_email")
-    .eq("id", appId)
-    .maybeSingle()
-  if (!data || data.owner_email !== me.email) {
-    return { ok: false, error: "Unknown app" }
-  }
-  return me
-}
-
-function isDenied(
-  value: SessionMember | { ok: false; error: string }
-): value is { ok: false; error: string } {
-  return "ok" in value
 }
 
 function revalidateApp(id?: string) {

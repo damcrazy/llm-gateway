@@ -118,7 +118,7 @@ export interface PlaygroundResult {
  * A member's private providers are theirs alone: running someone else's app
  * (as an admin) can't spend them.
  */
-function privateOwnerFor(
+export function privateOwnerFor(
   context: AuthContext | null,
   runnerEmail: string | undefined
 ): string | null {
