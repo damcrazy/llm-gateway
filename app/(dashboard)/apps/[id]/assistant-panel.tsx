@@ -38,6 +38,7 @@ import {
   type AssistantTurnInput,
   type AssistantTurnResult,
 } from "@/lib/bucket-assistant/contract"
+import { isSendKey } from "@/lib/bucket-assistant/keys"
 import type { AssistantOp, BucketsState } from "@/lib/bucket-assistant/ops"
 import {
   isAllowedRunsOn,
@@ -467,7 +468,14 @@ export function AssistantPanel({
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
+                if (
+                  isSendKey({
+                    key: event.key,
+                    shiftKey: event.shiftKey,
+                    isComposing: event.nativeEvent.isComposing,
+                    keyCode: event.keyCode,
+                  })
+                ) {
                   event.preventDefault()
                   send(draft)
                 }
