@@ -138,12 +138,7 @@ import {
   STRATEGY_OPTIONS,
   type BucketModel,
 } from "./buckets-shared"
-import type {
-  Board,
-  BoardItem,
-  BucketSettings,
-  SaveState,
-} from "./models-section"
+import type { Board, BoardItem, BucketSettings, SaveState } from "./board-state"
 
 const CAPABILITY_ICONS: Record<Capability, LucideIcon> = {
   tools: WrenchIcon,
