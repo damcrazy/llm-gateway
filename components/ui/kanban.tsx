@@ -823,12 +823,16 @@ function KanbanColumn(props: KanbanColumnProps) {
 
   return (
     <KanbanColumnContext.Provider value={columnContext}>
+      {/* Local patch: items run across the board's direction (columns side by
+          side stack their items; stacked rows lay theirs out in a line).
+          Upstream sorted items along the board's own axis, so they never
+          made room for a dragged card. */}
       <SortableContext
         items={items}
         strategy={
           context.orientation === "horizontal"
-            ? horizontalListSortingStrategy
-            : verticalListSortingStrategy
+            ? verticalListSortingStrategy
+            : horizontalListSortingStrategy
         }
       >
         <ColumnPrimitive

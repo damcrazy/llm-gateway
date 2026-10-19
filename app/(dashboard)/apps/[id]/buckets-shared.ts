@@ -13,7 +13,7 @@ export const STRATEGY_OPTIONS: {
   {
     value: "ordered",
     label: "In order",
-    help: "Tries the models top to bottom.",
+    help: "Tries the models left to right.",
   },
   {
     value: "fastest",

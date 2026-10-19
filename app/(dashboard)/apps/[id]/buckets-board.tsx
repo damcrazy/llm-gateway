@@ -211,7 +211,7 @@ export function BucketsBoard({
           <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
             model: &quot;smart&quot;
           </code>
-          . Models are tried top to bottom. When one fails, is rate-limited or
+          . Models are tried left to right. When one fails, is rate-limited or
           is cooling down, the next one answers. Drag to reorder. Changes reach
           API calls within 30 seconds.
         </CardDescription>
@@ -258,6 +258,7 @@ export function BucketsBoard({
           </Empty>
         ) : (
           <Kanban
+            orientation="vertical"
             value={board.columns}
             onValueChange={drag.onColumnsChange}
             getItemValue={(item) => item.key}
@@ -265,7 +266,7 @@ export function BucketsBoard({
             onDragEnd={drag.onDragEnd}
             onDragCancel={drag.onDragCancel}
           >
-            <KanbanBoard className="h-auto items-start overflow-x-auto pb-2">
+            <KanbanBoard className="h-auto min-w-0 gap-3">
               {keys.map((key) => (
                 <BucketColumn
                   key={key}
@@ -426,7 +427,7 @@ function BucketColumn({
       value={bucketKey}
       data-tour="app-bucket"
       className={cn(
-        "w-76 shrink-0 gap-3 rounded-xl bg-muted/40 p-3 transition-colors dark:bg-muted/20",
+        "h-auto min-w-0 gap-3 rounded-xl bg-muted/40 p-3 transition-colors dark:bg-muted/20",
         dropping && "border-primary bg-primary/5 ring-2 ring-primary/30"
       )}
       // Rows dragged from the model table (native drag and drop).
@@ -448,7 +449,7 @@ function BucketColumn({
         onAddModel(bucketKey, modelId)
       }}
     >
-      <div className="flex items-start gap-1.5">
+      <div className="flex flex-wrap items-start gap-x-1.5 gap-y-2">
         <KanbanColumnHandle asChild>
           <Button
             variant="ghost"
@@ -489,6 +490,17 @@ function BucketColumn({
             />
           </div>
         </div>
+        <BucketStrategySelects
+          settings={settings}
+          onChange={onSettingsChange}
+        />
+        <AddModelPopover
+          disabled={full}
+          modelsById={modelsById}
+          addable={addable}
+          inBucket={new Set(items.map((item) => item.modelId))}
+          onPick={(modelId) => onAddModel(bucketKey, modelId)}
+        />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -526,14 +538,19 @@ function BucketColumn({
         </DropdownMenu>
       </div>
 
-      <BucketStrategyRow settings={settings} onChange={onSettingsChange} />
+      <p className="text-xs text-muted-foreground">{strategyHelp(settings)}</p>
 
-      <div className="flex min-h-24 flex-col gap-2">
+      {/* Cards run left to right in the order they're tried; a long chain
+          scrolls sideways instead of stretching the page. */}
+      <div className="flex min-h-24 gap-2 overflow-x-auto p-0.5 pb-2">
         {items.map((item, index) => {
           const model = modelsById.get(item.modelId)
           return (
             <KanbanItem key={item.key} value={item.key} asChild>
-              <div className="rounded-lg" data-tour="app-bucket-card">
+              <div
+                className="w-72 shrink-0 rounded-lg"
+                data-tour="app-bucket-card"
+              >
                 {model ? (
                   <ModelCardBody
                     model={model}
@@ -552,18 +569,10 @@ function BucketColumn({
         {items.length === 0 && (
           <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
             <CircleDashedIcon className="size-4" />
-            Drop models here
+            Drop models here, or use Add model
           </div>
         )}
       </div>
-
-      <AddModelPopover
-        disabled={full}
-        modelsById={modelsById}
-        addable={addable}
-        inBucket={new Set(items.map((item) => item.modelId))}
-        onPick={(modelId) => onAddModel(bucketKey, modelId)}
-      />
 
       <BucketNameDialog
         open={renaming}
@@ -605,66 +614,73 @@ function BucketColumn({
 }
 
 /** How a bucket orders its models, and whether it hedges slow ones. */
-function BucketStrategyRow({
+function BucketStrategySelects({
   settings,
   onChange,
 }: {
   settings: BucketSettings
   onChange: (next: Partial<BucketSettings>) => void
 }) {
-  const strategy = STRATEGY_OPTIONS.find((o) => o.value === settings.strategy)
   const hedge =
     HEDGE_OPTIONS.find((o) => o.ms === settings.hedgeAfterMs)?.value ?? "off"
   return (
-    <div className="grid gap-1.5" data-tour="app-bucket-strategy">
-      <div className="grid grid-cols-2 gap-1.5">
-        <Select
-          value={settings.strategy}
-          onValueChange={(value) =>
-            onChange({ strategy: value as BucketSettings["strategy"] })
-          }
-        >
-          <SelectTrigger size="sm" className="w-full" aria-label="Order">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent position="popper">
-            {STRATEGY_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={hedge}
-          onValueChange={(value) =>
-            onChange({
-              hedgeAfterMs:
-                HEDGE_OPTIONS.find((o) => o.value === value)?.ms ?? null,
-            })
-          }
-        >
-          <SelectTrigger size="sm" className="w-full" aria-label="Hedging">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent position="popper">
-            {HEDGE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {strategy?.help}
-        {settings.strategy !== "ordered" &&
-          " The order below is the fallback when there's no data."}
-        {settings.hedgeAfterMs != null &&
-          ` If a model hasn't answered after ${settings.hedgeAfterMs / 1000} s, the next one starts too and the first to answer wins (you may pay for both).`}
-      </p>
+    // Wraps under the name on narrow screens, sits beside it on wider ones.
+    <div
+      className="order-last grid w-full grid-cols-2 gap-1.5 sm:order-none sm:w-72"
+      data-tour="app-bucket-strategy"
+    >
+      <Select
+        value={settings.strategy}
+        onValueChange={(value) =>
+          onChange({ strategy: value as BucketSettings["strategy"] })
+        }
+      >
+        <SelectTrigger size="sm" className="w-full" aria-label="Order">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent position="popper">
+          {STRATEGY_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select
+        value={hedge}
+        onValueChange={(value) =>
+          onChange({
+            hedgeAfterMs:
+              HEDGE_OPTIONS.find((o) => o.value === value)?.ms ?? null,
+          })
+        }
+      >
+        <SelectTrigger size="sm" className="w-full" aria-label="Hedging">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent position="popper">
+          {HEDGE_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
+}
+
+function strategyHelp(settings: BucketSettings) {
+  const strategy = STRATEGY_OPTIONS.find((o) => o.value === settings.strategy)
+  return [
+    strategy?.help,
+    settings.strategy !== "ordered" &&
+      "The order below is the fallback when there's no data.",
+    settings.hedgeAfterMs != null &&
+      `If a model hasn't answered after ${settings.hedgeAfterMs / 1000} s, the next one starts too and the first to answer wins (you may pay for both).`,
+  ]
+    .filter(Boolean)
+    .join(" ")
 }
 
 /** A model in a bucket: chain position, price, health and this month's use. */
@@ -683,8 +699,8 @@ export function ModelCardBody({
   return (
     <div
       className={cn(
-        "group/card rounded-lg border bg-card p-2.5 shadow-xs",
-        overlay && "w-76 rotate-1 shadow-lg ring-2 ring-primary/30",
+        "group/card flex h-full flex-col rounded-lg border bg-card p-2.5 shadow-xs",
+        overlay && "w-72 rotate-1 shadow-lg ring-2 ring-primary/30",
         unavailable && "border-dashed opacity-70"
       )}
     >
@@ -750,7 +766,9 @@ export function ModelCardBody({
         </div>
       </div>
 
-      <UsageStrip model={model} />
+      <div className="mt-auto pt-2">
+        <UsageStrip model={model} />
+      </div>
     </div>
   )
 }
@@ -769,7 +787,7 @@ function ordinal(n: number) {
 
 function MissingModelCard({ onRemove }: { onRemove: () => void }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-dashed bg-card p-2.5 text-xs text-muted-foreground">
+    <div className="flex h-full items-center gap-2 rounded-lg border border-dashed bg-card p-2.5 text-xs text-muted-foreground">
       <KanbanItemHandle asChild>
         <button
           type="button"
@@ -850,7 +868,7 @@ function UsageStrip({ model }: { model: BucketModel }) {
     return (
       <p
         className={cn(
-          "mt-2 rounded-md px-2 py-1 text-xs",
+          "rounded-md px-2 py-1 text-xs",
           model.status.kind === "cooling"
             ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
             : "bg-muted text-muted-foreground"
@@ -862,13 +880,13 @@ function UsageStrip({ model }: { model: BucketModel }) {
   }
   if (!usage?.requests) {
     return (
-      <p className="mt-2 rounded-md bg-muted/60 px-2 py-1 text-xs text-muted-foreground">
+      <p className="rounded-md bg-muted/60 px-2 py-1 text-xs text-muted-foreground">
         Not used this month
       </p>
     )
   }
   return (
-    <dl className="mt-2 grid grid-cols-3 gap-1 rounded-md bg-muted/60 px-2 py-1 text-xs">
+    <dl className="grid grid-cols-3 gap-1 rounded-md bg-muted/60 px-2 py-1 text-xs">
       <div>
         <dt className="text-muted-foreground">Requests</dt>
         <dd className="font-medium tabular-nums">
@@ -917,12 +935,7 @@ function AddModelPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-muted-foreground"
-          disabled={disabled}
-        >
+        <Button variant="outline" size="sm" disabled={disabled}>
           <PlusIcon />
           {disabled ? `Full (${MAX_BUCKET_MODELS} models)` : "Add model"}
         </Button>

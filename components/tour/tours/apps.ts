@@ -139,13 +139,13 @@ export const APPS_TOURS: TourDefinition[] = [
       },
       {
         target: "app-bucket",
-        side: "right",
+        side: "top",
         title: "A bucket",
-        body: "Models are tried top to bottom. Drag cards to reorder them, or drag the handle at the top to reorder buckets. Each card shows price, context size, health, and this month's usage by this app.",
+        body: "Models are tried left to right. Drag cards to reorder them, or drag the handle beside the name to reorder buckets. Each card shows price, context size, health, and this month's usage by this app.",
       },
       {
         target: "app-bucket-strategy",
-        side: "right",
+        side: "bottom",
         title: "Order and hedging",
         body: "<b>Order</b> decides which model goes first: as listed, fastest recently, cheapest, or spread evenly. <b>Hedging</b> starts the next model too if the first is slow; the first answer wins, but you may pay for both.",
       },
