@@ -3,13 +3,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
+import {
+  applyOps,
+  describeOp,
+  opContext,
+  type AssistantOp,
+} from "@/lib/bucket-assistant/ops"
 import { offKindToast } from "@/lib/bucket-kinds"
 
 import { saveAppBuckets } from "../actions"
+import { askBucketAssistant, getAssistantOptions } from "./assistant-actions"
+import { AssistantPanel, type ApplyOutcome } from "./assistant-panel"
 import {
   duplicateIn,
   initialBoard,
   makeKey,
+  stateToBoard,
   toInput,
   type Board,
   type BucketSettings,
@@ -244,6 +253,39 @@ export function ModelsSection({
     [update, scheduleSave]
   )
 
+  const [assistantOpen, setAssistantOpen] = useState(false)
+
+  /** Apply the assistant's proposal to the board as it is now. */
+  const applyAssistantOps = useCallback(
+    (ops: AssistantOp[]): ApplyOutcome => {
+      const result = applyOps(
+        toInput(boardRef.current),
+        ops,
+        opContext(data.models, data.addable)
+      )
+      if (result.applied.length)
+        update((previous) => stateToBoard(result.state, previous))
+      const n = result.applied.length
+      if (n) toast.success(`Applied ${n} change${n === 1 ? "" : "s"}`)
+      return {
+        applied: n,
+        skipped: result.skipped.map(({ op, error }) => ({
+          line: describeOp(op, nameOf),
+          error,
+        })),
+      }
+    },
+    [data.models, data.addable, update, nameOf]
+  )
+
+  const getBoardState = useCallback(() => toInput(boardRef.current), [])
+  const ask = useCallback(
+    (input: Parameters<typeof askBucketAssistant>[1]) =>
+      askBucketAssistant(appId, input),
+    [appId]
+  )
+  const loadOptions = useCallback(() => getAssistantOptions(appId), [appId])
+
   const bucketList = useMemo(
     () =>
       Object.entries(board.columns).map(([key, items]) => ({
@@ -272,6 +314,16 @@ export function ModelsSection({
         onSetBucketSettings={setBucketSettings}
         onSetOnlyBuckets={setOnlyBuckets}
         drag={drag}
+        onOpenAssistant={() => setAssistantOpen(true)}
+      />
+      <AssistantPanel
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        appId={appId}
+        getBoardState={getBoardState}
+        onApply={applyAssistantOps}
+        ask={ask}
+        loadOptions={loadOptions}
       />
       <ModelLibrary
         models={data.models}

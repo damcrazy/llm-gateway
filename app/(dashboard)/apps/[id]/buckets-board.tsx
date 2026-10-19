@@ -17,6 +17,7 @@ import {
   LayersIcon,
   PencilIcon,
   PlusIcon,
+  SparklesIcon,
   StarIcon,
   Trash2Icon,
   TriangleAlertIcon,
@@ -175,6 +176,7 @@ export function BucketsBoard({
   onSetBucketSettings,
   onSetOnlyBuckets,
   drag,
+  onOpenAssistant,
 }: {
   board: Board
   modelsById: Map<string, BucketModel>
@@ -191,6 +193,7 @@ export function BucketsBoard({
   onSetBucketSettings: (key: string, next: Partial<BucketSettings>) => void
   onSetOnlyBuckets: (value: boolean) => void
   drag: DragHandlers
+  onOpenAssistant: () => void
 }) {
   const [creating, setCreating] = useState(false)
   const keys = Object.keys(board.columns)
@@ -219,7 +222,18 @@ export function BucketsBoard({
           is cooling down, the next one answers. Drag to reorder. Changes reach
           API calls within 30 seconds.
         </CardDescription>
-        <CardAction>
+        <CardAction className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenAssistant}
+            aria-label="Ask assistant"
+            data-tour="app-assistant"
+          >
+            <SparklesIcon />
+            {/* Icon only on phones, so the description keeps its width. */}
+            <span className="hidden sm:inline">Ask assistant</span>
+          </Button>
           <Button
             size="sm"
             onClick={() => setCreating(true)}
