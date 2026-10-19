@@ -202,6 +202,18 @@ describe("add_models", () => {
     expect(result.state.buckets[0]!.modelIds).toEqual(["a", "b"])
   })
 
+  test("adding only models already there is an error", () => {
+    expect(
+      err(
+        applyOp(
+          start,
+          { type: "add_models", bucket: "smart", modelIds: ["a"] },
+          ctx
+        )
+      )
+    ).toContain("already in")
+  })
+
   test("inserts at a 1-based position", () => {
     const result = ok(
       applyOp(
@@ -296,12 +308,32 @@ describe("update_bucket", () => {
     const result = ok(
       applyOp(
         start,
-        { type: "update_bucket", bucket: "smart", newName: "Smart" },
+        {
+          type: "update_bucket",
+          bucket: "smart",
+          newName: "Smart",
+          strategy: "spread",
+        },
         ctx
       )
     )
     expect(result.op).not.toHaveProperty("newName")
     expect(result.state.buckets[0]!.name).toBe("smart")
+  })
+
+  test("an update that changes nothing is an error", () => {
+    expect(
+      err(applyOp(start, { type: "update_bucket", bucket: "smart" }, ctx))
+    ).toContain("Nothing to change")
+    expect(
+      err(
+        applyOp(
+          start,
+          { type: "update_bucket", bucket: "smart", newName: "smart" },
+          ctx
+        )
+      )
+    ).toContain("Nothing to change")
   })
 
   test("can't rename to a taken name", () => {
@@ -369,14 +401,16 @@ describe("update_bucket", () => {
       )
     )
     expect(moved.state.defaultBucket).toBe("fast")
-    const untouched = ok(
-      applyOp(
-        start,
-        { type: "update_bucket", bucket: "fast", makeDefault: false },
-        ctx
+    // "fast" isn't the default, so there's nothing to stop.
+    expect(
+      err(
+        applyOp(
+          start,
+          { type: "update_bucket", bucket: "fast", makeDefault: false },
+          ctx
+        )
       )
-    )
-    expect(untouched.state.defaultBucket).toBe("smart")
+    ).toContain("Nothing to change")
     const cleared = ok(
       applyOp(
         start,

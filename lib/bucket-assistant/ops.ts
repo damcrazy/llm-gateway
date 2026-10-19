@@ -231,6 +231,13 @@ function run(
       const added = checkNewModels(ctx, op.modelIds).filter(
         (id) => !target.modelIds.includes(id)
       )
+      // Saying "added" for models already there would mislead the user.
+      if (!added.length) {
+        const names = [...new Set(op.modelIds)].map((id) => modelName(ctx, id))
+        fail(
+          `${names.join(", ")} ${names.length === 1 ? "is" : "are"} already in "${target.name}"`
+        )
+      }
       const at =
         op.position == null
           ? target.modelIds.length
@@ -297,6 +304,15 @@ function run(
       if (op.makeDefault === true) defaultBucket = target.name
       if (op.makeDefault === false && defaultBucket === target.name)
         defaultBucket = null
+      const before = state.buckets[index]!
+      if (
+        target.name === before.name &&
+        target.strategy === before.strategy &&
+        target.hedgeAfterMs === before.hedgeAfterMs &&
+        target.modelIds.join() === before.modelIds.join() &&
+        defaultBucket === state.defaultBucket
+      )
+        fail(`Nothing to change in "${oldName}"`)
       const applied = { ...op, bucket: oldName }
       // A "rename" to the current name isn't one.
       delete applied.newName
